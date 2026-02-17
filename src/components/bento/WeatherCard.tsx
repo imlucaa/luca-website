@@ -7,7 +7,7 @@ import { MapPin, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudDrizzle,
 function WeatherIcon({ description }: { description: string }) {
   const desc = description.toLowerCase();
   const iconClass = "w-8 h-8 opacity-60";
-  
+
   if (desc.includes('clear') || desc.includes('sunny')) return <Sun className={iconClass} />;
   if (desc.includes('rain') || desc.includes('shower')) return <CloudRain className={iconClass} />;
   if (desc.includes('snow')) return <CloudSnow className={iconClass} />;
@@ -19,10 +19,10 @@ function WeatherIcon({ description }: { description: string }) {
 }
 
 export function WeatherCard() {
-  const { data, isLoading } = useWeather();
+  const { data, isLoading, isStale } = useWeather();
 
   return (
-    <BentoCard className="weather-card">
+    <BentoCard colSpan={2} className="weather-card">
       <span className="text-label">Weather</span>
       {isLoading ? (
         <div className="weather-card-content">
@@ -40,6 +40,9 @@ export function WeatherCard() {
               <MapPin className="w-3 h-3" />
               {data.location}
             </span>
+            {isStale && (
+              <span className="text-[10px] text-amber-300/80">Showing cached data</span>
+            )}
           </div>
         </div>
       ) : (

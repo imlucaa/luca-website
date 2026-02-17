@@ -1,5 +1,4 @@
 import { AgentStats as AgentStatsType } from "@/lib/types";
-import Image from "next/image";
 
 interface AgentStatsProps {
   agents: AgentStatsType[];

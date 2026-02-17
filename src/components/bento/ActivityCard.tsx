@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { useLanyard } from '@/hooks/useLanyard';
 import { BentoCard } from '@/components/ui/BentoCard';
 import { formatTime, getActivityImageUrl } from '@/lib/utils';
@@ -30,11 +31,28 @@ const ACTIVITY_TYPES: Record<number, { label: string; icon: typeof Music }> = {
   5: { label: 'Competing in', icon: Trophy },
 };
 
+function readLocalStorageItem<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? (JSON.parse(value) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+const subscribeNoop = () => () => {};
+
 export function ActivityCard() {
   const { data } = useLanyard();
-  const [lastSpotify, setLastSpotify] = useState<SavedSpotify | null>(null);
-  const [lastActivity, setLastActivity] = useState<SavedActivity | null>(null);
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const hasHydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const cachedSpotify = hasHydrated
+    ? readLocalStorageItem<SavedSpotify>('lastSpotifySong')
+    : null;
+  const cachedActivity = hasHydrated
+    ? readLocalStorageItem<SavedActivity>('lastActivity')
+    : null;
 
   // Update current time for progress calculations
   useEffect(() => {
@@ -44,21 +62,10 @@ export function ActivityCard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load saved activities from localStorage
-  useEffect(() => {
-    try {
-      const savedSong = localStorage.getItem('lastSpotifySong');
-      if (savedSong) setLastSpotify(JSON.parse(savedSong));
-
-      const savedActivity = localStorage.getItem('lastActivity');
-      if (savedActivity) setLastActivity(JSON.parse(savedActivity));
-    } catch (e) {
-      console.error('Error loading saved activity:', e);
-    }
-  }, []);
-
   // Save current activities
   useEffect(() => {
+    if (!hasHydrated) return;
+
     if (data?.listening_to_spotify && data.spotify) {
       const spotifyData = {
         song: data.spotify.song,
@@ -66,8 +73,7 @@ export function ActivityCard() {
         album: data.spotify.album,
         album_art_url: data.spotify.album_art_url,
       };
-      setLastSpotify(spotifyData);
-      localStorage.setItem('lastSpotifySong', JSON.stringify(spotifyData));
+      window.localStorage.setItem('lastSpotifySong', JSON.stringify(spotifyData));
     }
 
     if (data?.activities && data.activities.length > 0) {
@@ -80,11 +86,10 @@ export function ActivityCard() {
           image_url: getActivityImageUrl(activity),
           type: activity.type,
         };
-        setLastActivity(activityData);
-        localStorage.setItem('lastActivity', JSON.stringify(activityData));
+        window.localStorage.setItem('lastActivity', JSON.stringify(activityData));
       }
     }
-  }, [data]);
+  }, [hasHydrated, data]);
 
   // Determine what to display
   let content: {
@@ -157,26 +162,26 @@ export function ActivityCard() {
         }
       }
     }
-  } else if (lastSpotify) {
+  } else if (cachedSpotify) {
     // Show last Spotify song
     isSpotify = true;
     content = {
-      image: lastSpotify.album_art_url,
-      title: lastSpotify.song,
-      subtitle: lastSpotify.artist,
-      detail: lastSpotify.album || '',
+      image: cachedSpotify.album_art_url,
+      title: cachedSpotify.song,
+      subtitle: cachedSpotify.artist,
+      detail: cachedSpotify.album || '',
       label: 'Last Played',
       isLive: false,
     };
-  } else if (lastActivity) {
+  } else if (cachedActivity) {
     // Show last activity
-    const actType = ACTIVITY_TYPES[lastActivity.type] || { label: 'Playing', icon: Gamepad2 };
+    const actType = ACTIVITY_TYPES[cachedActivity.type] || { label: 'Playing', icon: Gamepad2 };
     ActivityIcon = actType.icon;
     content = {
-      image: lastActivity.image_url,
-      title: lastActivity.name,
-      subtitle: lastActivity.details || '',
-      detail: lastActivity.state || '',
+      image: cachedActivity.image_url,
+      title: cachedActivity.name,
+      subtitle: cachedActivity.details || '',
+      detail: cachedActivity.state || '',
       label: `Last Activity`,
       isLive: false,
     };
@@ -197,11 +202,13 @@ export function ActivityCard() {
           <div className="activity-art-wrapper">
             {content.image ? (
               <>
-                <img
+                <Image
                   src={content.image}
+                  width={96}
+                  height={96}
                   className="activity-art"
                   alt="Activity"
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  unoptimized
                 />
                 <div className="activity-art-border" />
               </>

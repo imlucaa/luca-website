@@ -19,15 +19,15 @@ export default function GeneralPage() {
         {/* Row 1: Profile Card (full width - 4 cols) */}
         <ProfileCard />
 
-        {/* Row 2: Time (1 col) + Weather (1 col) + Gear (1 col) + empty */}
+        {/* Row 2: Time (2 cols) + Weather (2 cols) */}
         <TimeCard />
         <WeatherCard />
+
+        {/* Row 3: Activity/Now Playing (3 cols) + Gear (1 col) */}
+        <ActivityCard />
         <GearButton onClick={() => setIsGearModalOpen(true)} />
 
-        {/* Row 3: Activity/Now Playing (3 cols) */}
-        <ActivityCard />
-
-        {/* Row 4: Recent Streams (2 cols) | Steam Activity (2 cols) */}
+        {/* Row 4: Recent Streams (2 cols) + Steam Activity (2 cols) */}
         <RecentStreams />
         <SteamActivity />
       </main>
