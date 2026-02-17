@@ -25,7 +25,7 @@ export function TimeCard() {
   }, []);
 
   return (
-    <BentoCard className="time-card">
+    <BentoCard colSpan={2} className="time-card">
       <span className="text-label">Local Time</span>
       <div className="time-card-content">
         <div className="time-display">

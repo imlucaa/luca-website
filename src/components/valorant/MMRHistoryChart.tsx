@@ -30,7 +30,6 @@ export function MMRHistoryChart({ history }: MMRHistoryChartProps) {
   const chartRange = chartMax - chartMin;
 
   // SVG dimensions
-  const width = 100; // percentage
   const height = 150; // pixels - reduced from 200
   const pointRadius = 4;
 

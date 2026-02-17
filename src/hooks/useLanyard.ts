@@ -1,116 +1,148 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useSyncExternalStore } from 'react';
 import { DISCORD_ID } from '@/lib/constants';
 import type { LanyardData, LanyardWebSocketMessage } from '@/lib/types';
 
-export function useLanyard() {
-  const [data, setData] = useState<LanyardData | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const wsRef = useRef<WebSocket | null>(null);
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+interface LanyardStoreState {
+  data: LanyardData | null;
+  error: Error | null;
+  isLoading: boolean;
+}
 
-  useEffect(() => {
-    let mounted = true;
+const RECONNECT_DELAY_MS = 3000;
 
-    const connectWebSocket = () => {
+let state: LanyardStoreState = {
+  data: null,
+  error: null,
+  isLoading: true,
+};
+
+const listeners = new Set<() => void>();
+
+let ws: WebSocket | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let hasReceivedData = false;
+
+function emit() {
+  listeners.forEach((listener) => listener());
+}
+
+function setStoreState(patch: Partial<LanyardStoreState>) {
+  state = { ...state, ...patch };
+  emit();
+}
+
+function clearHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectSocket();
+  }, RECONNECT_DELAY_MS);
+}
+
+function connectSocket() {
+  if (typeof window === 'undefined') return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+  try {
+    ws = new WebSocket('wss://api.lanyard.rest/socket');
+
+    ws.onopen = () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.info('Lanyard socket connected');
+      }
+    };
+
+    ws.onmessage = (event) => {
       try {
-        const ws = new WebSocket('wss://api.lanyard.rest/socket');
-        wsRef.current = ws;
+        const message: LanyardWebSocketMessage = JSON.parse(event.data);
 
-        ws.onopen = () => {
-          console.log('Lanyard WebSocket connected');
-        };
+        if (message.op === 1) {
+          const helloData = message.d as { heartbeat_interval: number };
+          ws?.send(
+            JSON.stringify({
+              op: 2,
+              d: { subscribe_to_id: DISCORD_ID },
+            })
+          );
 
-        ws.onmessage = (event) => {
-          if (!mounted) return;
-
-          try {
-            const message: LanyardWebSocketMessage = JSON.parse(event.data);
-
-            switch (message.op) {
-              case 1: // Hello
-                const helloData = message.d as { heartbeat_interval: number };
-                // Send initial subscribe
-                ws.send(
-                  JSON.stringify({
-                    op: 2,
-                    d: {
-                      subscribe_to_id: DISCORD_ID,
-                    },
-                  })
-                );
-
-                // Setup heartbeat
-                if (heartbeatRef.current) {
-                  clearInterval(heartbeatRef.current);
-                }
-                heartbeatRef.current = setInterval(() => {
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ op: 3 }));
-                  }
-                }, helloData.heartbeat_interval);
-                break;
-
-              case 0: // Event
-                if (message.t === 'INIT_STATE' || message.t === 'PRESENCE_UPDATE') {
-                  const presenceData = message.d as LanyardData;
-                  setData(presenceData);
-                  setError(null);
-                  setIsLoading(false);
-                }
-                break;
+          clearHeartbeat();
+          heartbeatTimer = setInterval(() => {
+            if (ws?.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ op: 3 }));
             }
-          } catch (err) {
-            console.error('Error parsing WebSocket message:', err);
-          }
-        };
+          }, helloData.heartbeat_interval);
+          return;
+        }
 
-        ws.onerror = (event) => {
-          console.error('Lanyard WebSocket error:', event);
-          if (mounted) {
-            setError(new Error('WebSocket connection error'));
-          }
-        };
-
-        ws.onclose = () => {
-          console.log('Lanyard WebSocket closed');
-          if (heartbeatRef.current) {
-            clearInterval(heartbeatRef.current);
-            heartbeatRef.current = null;
-          }
-
-          // Reconnect after 3 seconds if still mounted
-          if (mounted) {
-            setTimeout(() => {
-              if (mounted) {
-                connectWebSocket();
-              }
-            }, 3000);
-          }
-        };
+        if (message.op === 0 && (message.t === 'INIT_STATE' || message.t === 'PRESENCE_UPDATE')) {
+          hasReceivedData = true;
+          setStoreState({
+            data: message.d as LanyardData,
+            error: null,
+            isLoading: false,
+          });
+        }
       } catch (err) {
-        console.error('Error creating WebSocket:', err);
-        if (mounted) {
-          setError(err instanceof Error ? err : new Error('Failed to connect to Lanyard'));
-          setIsLoading(false);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Lanyard message parse warning:', err);
         }
       }
     };
 
-    connectWebSocket();
-
-    return () => {
-      mounted = false;
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
+    ws.onerror = () => {
+      // Browser WebSocket errors are opaque; reconnect via onclose.
+      if (!hasReceivedData) {
+        setStoreState({
+          error: new Error('WebSocket connection error'),
+          isLoading: false,
+        });
       }
     };
-  }, []);
 
-  return { data, error, isLoading };
+    ws.onclose = () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.info('Lanyard socket closed');
+      }
+      clearHeartbeat();
+      ws = null;
+      scheduleReconnect();
+    };
+  } catch (err) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Lanyard socket creation warning:', err);
+    }
+    setStoreState({
+      error: err instanceof Error ? err : new Error('Failed to connect to Lanyard'),
+      isLoading: false,
+    });
+    scheduleReconnect();
+  }
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  connectSocket();
+
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getSnapshot() {
+  return state;
+}
+
+export function useLanyard() {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

@@ -1,12 +1,12 @@
 'use client';
 
+import Image from 'next/image';
 import { OsuUser } from '@/lib/types';
 import { BentoCard } from '@/components/ui/BentoCard';
 import { getTimeAgo } from '@/lib/utils';
 
 interface OsuProfileCardProps {
   user: OsuUser;
-  coverColor?: string | null;
 }
 
 function formatPlayTime(seconds: number): string {
@@ -31,24 +31,25 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
 }
 
-export function OsuProfileCard({ user, coverColor }: OsuProfileCardProps) {
+export function OsuProfileCard({ user }: OsuProfileCardProps) {
   const stats = user.statistics;
   const lastActive = user.last_visit
     ? getTimeAgo(Math.floor(new Date(user.last_visit).getTime() / 1000))
     : 'Unknown';
 
-  const cardBg = coverColor || 'rgba(20, 20, 20, 0.4)';
-
   return (
-    <BentoCard colSpan={4} className="osu-profile-card" style={{ background: cardBg, borderColor: 'rgba(255, 255, 255, 0.08)' }}>
+    <BentoCard colSpan={4} className="osu-profile-card">
       {/* Cover Background */}
       <div className="osu-profile-cover">
         {user.cover_url && (
-          <img
+          <Image
             src={user.cover_url}
             alt="Profile Cover"
             className="osu-profile-cover-img"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            width={1200}
+            height={320}
+            unoptimized
           />
         )}
         <div className="osu-profile-cover-overlay" />
@@ -59,21 +60,27 @@ export function OsuProfileCard({ user, coverColor }: OsuProfileCardProps) {
         {/* Header: Avatar + Name */}
         <div className="osu-profile-header">
           <div className="osu-avatar-wrapper">
-            <img
+            <Image
               src={user.avatar_url}
               alt={user.username}
               className="osu-avatar"
+              width={80}
+              height={80}
+              unoptimized
             />
             {user.is_online && <div className="osu-online-indicator" />}
           </div>
           <div className="osu-profile-info">
             <div className="osu-profile-name-row">
               <h1 className="osu-profile-name">{user.username}</h1>
-              <img
+              <Image
                 src={`https://flagsapi.com/${user.country_code}/flat/24.png`}
                 alt={user.country_code}
                 className="osu-country-flag"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                width={20}
+                height={14}
+                unoptimized
               />
               <span className="osu-mode-badge">{user.playmode === 'osu' ? 'standard' : user.playmode}</span>
             </div>
@@ -177,7 +184,7 @@ export function OsuProfileCard({ user, coverColor }: OsuProfileCardProps) {
                 cy="30"
                 r="26"
                 fill="none"
-                stroke="#e94d8a"
+                stroke="var(--osu-accent)"
                 strokeWidth="3"
                 strokeDasharray={`${(stats.level.progress / 100) * 163.36} 163.36`}
                 strokeLinecap="round"

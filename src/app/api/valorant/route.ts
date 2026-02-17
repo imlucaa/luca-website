@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { kvGetWithStale, kvSetWithTimestamp } from "@/lib/server/kv-cache";
+import { rateLimit } from "@/lib/server/rate-limit";
 import {
   ValorantMatch,
-  ValorantMatchPlayer,
   AgentStats,
   PerformanceMetrics,
 } from "@/lib/types";
@@ -10,6 +11,65 @@ const HENRIK_API_BASE = "https://api.henrikdev.xyz";
 const VALORANT_NAME = "angels in camo";
 const VALORANT_TAG = "006";
 const VALORANT_REGION = "ap";
+const VALORANT_CACHE_TTL_MS = 2 * 60 * 1000;
+const VALORANT_STALE_TTL_MS = 10 * 60 * 1000;
+const VALORANT_CACHE_KEY = "api:valorant:default:v1";
+const VALORANT_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const VALORANT_RATE_LIMIT_MAX_REQUESTS = 45;
+
+interface ValorantApiPayload {
+  account: unknown;
+  mmr: unknown;
+  matches?: ValorantMatch[];
+  aggregatedStats?: {
+    agentStats: AgentStats[];
+    performanceMetrics: PerformanceMetrics;
+  };
+  errors: {
+    matches: string | null;
+  };
+  stale?: boolean;
+}
+
+class ValorantApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+    public retryAfter?: number
+  ) {
+    super(message);
+    this.name = "ValorantApiError";
+  }
+}
+
+let valorantCache: { payload: ValorantApiPayload; cachedAt: number } | null = null;
+let valorantInFlight: Promise<ValorantApiPayload> | null = null;
+
+function getRetryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function getCacheHeaders(cacheStatus: "HIT" | "MISS" | "SHARED" | "STALE" | "HIT_KV"): HeadersInit {
+  return {
+    "Cache-Control": "s-maxage=120, stale-while-revalidate=600",
+    "X-Valorant-Cache": cacheStatus,
+  };
+}
+
+function mergeHeaders(...headerSets: Array<HeadersInit | undefined>): HeadersInit {
+  const merged = new Headers();
+  for (const headers of headerSets) {
+    if (!headers) continue;
+    const normalized = new Headers(headers);
+    for (const [key, value] of normalized.entries()) {
+      merged.set(key, value);
+    }
+  }
+  return merged;
+}
 
 // Helper function to calculate aggregated stats from matches
 function calculateAggregatedStats(
@@ -164,125 +224,222 @@ function calculateAggregatedStats(
   };
 }
 
-export async function GET(request: Request) {
-  try {
-    // Check for search query parameters
-    const { searchParams } = new URL(request.url);
-    const searchName = searchParams.get('name');
-    const searchTag = searchParams.get('tag');
+async function fetchFreshValorantData(): Promise<ValorantApiPayload> {
+  const playerName = VALORANT_NAME;
+  const playerTag = VALORANT_TAG;
 
-    // Use searched user or default
-    const playerName = searchName || VALORANT_NAME;
-    const playerTag = searchTag || VALORANT_TAG;
+  const headers: HeadersInit = {};
+  if (process.env.HENRIK_API_KEY) {
+    headers["Authorization"] = process.env.HENRIK_API_KEY;
+  }
 
-    // Prepare headers - only add Authorization if API key exists
-    const headers: HeadersInit = {};
-    if (process.env.HENRIK_API_KEY) {
-      headers["Authorization"] = process.env.HENRIK_API_KEY;
+  const accountResponse = await fetch(
+    `${HENRIK_API_BASE}/valorant/v1/account/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}`,
+    {
+      headers,
+      next: { revalidate: 300 },
     }
+  );
 
-    // Fetch account data (region-agnostic - searches globally by Riot ID)
-    const accountResponse = await fetch(
-      `${HENRIK_API_BASE}/valorant/v1/account/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}`,
-      {
-        headers,
-        next: { revalidate: searchName ? 60 : 300 }, // Shorter cache for searches
-      }
-    );
-
-    if (!accountResponse.ok) {
-      const errorText = await accountResponse.text();
-      console.error("Account API error:", accountResponse.status, errorText);
-      if (accountResponse.status === 429) {
-        return NextResponse.json(
-          { error: "Rate limited by the Valorant API. Please try again in a minute.", code: "RATE_LIMITED" },
-          { status: 429 }
-        );
-      }
-      if (accountResponse.status === 404) {
-        return NextResponse.json(
-          { error: `Player "${playerName}#${playerTag}" not found` },
-          { status: 404 }
-        );
-      }
-      throw new Error(`Account API error: ${accountResponse.status}`);
-    }
-
-    const accountData = await accountResponse.json();
-
-    // Auto-detect region from account data, fallback to default
-    const playerRegion = accountData.data?.region || VALORANT_REGION;
-
-    // Fetch MMR data (rank info) - uses detected region
-    const mmrResponse = await fetch(
-      `${HENRIK_API_BASE}/valorant/v2/mmr/${playerRegion}/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}`,
-      {
-        headers,
-        next: { revalidate: searchName ? 60 : 300 },
-      }
-    );
-
-    if (!mmrResponse.ok) {
-      const errorText = await mmrResponse.text();
-      console.error("MMR API error:", mmrResponse.status, errorText);
-      if (mmrResponse.status === 429) {
-        return NextResponse.json(
-          { error: "Rate limited by the Valorant API. Please try again in a minute.", code: "RATE_LIMITED" },
-          { status: 429 }
-        );
-      }
-      throw new Error(`MMR API error: ${mmrResponse.status}`);
-    }
-
-    const mmrData = await mmrResponse.json();
-
-    // Fetch match history (all modes: competitive, unrated, swiftplay, deathmatch, etc.)
-    let matches: ValorantMatch[] = [];
-    let matchError = null;
-    try {
-      const matchesResponse = await fetch(
-        `${HENRIK_API_BASE}/valorant/v3/matches/${playerRegion}/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}?size=15`,
-        {
-          headers,
-          next: { revalidate: searchName ? 60 : 300 },
-        }
+  if (!accountResponse.ok) {
+    const errorText = await accountResponse.text();
+    console.error("Account API error:", accountResponse.status, errorText);
+    if (accountResponse.status === 429) {
+      throw new ValorantApiError(
+        "Rate limited by the Valorant API. Please try again in a minute.",
+        429,
+        "RATE_LIMITED",
+        getRetryAfterSeconds(accountResponse.headers.get("Retry-After"))
       );
-
-      if (matchesResponse.ok) {
-        const matchesData = await matchesResponse.json();
-        matches = matchesData.data || [];
-      } else {
-        const errorText = await matchesResponse.text();
-        console.error("Matches API error:", matchesResponse.status, errorText);
-        matchError = `Matches API error: ${matchesResponse.status}`;
-      }
-    } catch (error) {
-      console.error("Error fetching matches:", error);
-      matchError = "Failed to fetch match history";
     }
+    if (accountResponse.status === 404) {
+      throw new ValorantApiError(`Player "${playerName}#${playerTag}" not found`, 404);
+    }
+    throw new ValorantApiError("Failed to fetch Valorant data", 502);
+  }
 
-    // Calculate aggregated stats if we have matches
-    const aggregatedStats =
-      matches.length > 0
-        ? calculateAggregatedStats(matches, accountData.data.puuid)
-        : null;
+  const accountData = await accountResponse.json();
+  const playerRegion = accountData.data?.region || VALORANT_REGION;
 
-    return NextResponse.json({
-      account: accountData.data,
-      mmr: mmrData.data,
-      matches: matches.length > 0 ? matches : undefined,
-      aggregatedStats: aggregatedStats || undefined,
-      errors: {
-        matches: matchError,
+  const mmrResponse = await fetch(
+    `${HENRIK_API_BASE}/valorant/v2/mmr/${playerRegion}/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}`,
+    {
+      headers,
+      next: { revalidate: 300 },
+    }
+  );
+
+  if (!mmrResponse.ok) {
+    const errorText = await mmrResponse.text();
+    console.error("MMR API error:", mmrResponse.status, errorText);
+    if (mmrResponse.status === 429) {
+      throw new ValorantApiError(
+        "Rate limited by the Valorant API. Please try again in a minute.",
+        429,
+        "RATE_LIMITED",
+        getRetryAfterSeconds(mmrResponse.headers.get("Retry-After"))
+      );
+    }
+    throw new ValorantApiError("Failed to fetch Valorant data", 502);
+  }
+
+  const mmrData = await mmrResponse.json();
+
+  let matches: ValorantMatch[] = [];
+  let matchError: string | null = null;
+  try {
+    const matchesResponse = await fetch(
+      `${HENRIK_API_BASE}/valorant/v3/matches/${playerRegion}/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}?size=15`,
+      {
+        headers,
+        next: { revalidate: 300 },
+      }
+    );
+
+    if (matchesResponse.ok) {
+      const matchesData = await matchesResponse.json();
+      matches = matchesData.data || [];
+    } else {
+      const errorText = await matchesResponse.text();
+      console.error("Matches API error:", matchesResponse.status, errorText);
+      matchError = `Matches API error: ${matchesResponse.status}`;
+    }
+  } catch (error) {
+    console.error("Error fetching matches:", error);
+    matchError = "Failed to fetch match history";
+  }
+
+  const aggregatedStats =
+    matches.length > 0
+      ? calculateAggregatedStats(matches, accountData.data.puuid)
+      : null;
+
+  return {
+    account: accountData.data,
+    mmr: mmrData.data,
+    matches: matches.length > 0 ? matches : undefined,
+    aggregatedStats: aggregatedStats || undefined,
+    errors: {
+      matches: matchError,
+    },
+  };
+}
+
+export async function GET(request: Request) {
+  const rateLimitResult = rateLimit(request, {
+    namespace: "api:valorant",
+    limit: VALORANT_RATE_LIMIT_MAX_REQUESTS,
+    windowMs: VALORANT_RATE_LIMIT_WINDOW_MS,
+  });
+
+  if (!rateLimitResult.ok) {
+    return NextResponse.json(
+      {
+        error: "Too many requests. Please retry shortly.",
+        code: "RATE_LIMITED_LOCAL",
+        retryAfter: rateLimitResult.retryAfter,
       },
+      {
+        status: 429,
+        headers: mergeHeaders(rateLimitResult.headers, {
+          "Cache-Control": "no-store",
+        }),
+      }
+    );
+  }
+
+  const now = Date.now();
+  let staleKvPayload: ValorantApiPayload | null = null;
+
+  if (valorantCache && now - valorantCache.cachedAt < VALORANT_CACHE_TTL_MS) {
+    return NextResponse.json(valorantCache.payload, {
+      headers: mergeHeaders(getCacheHeaders("HIT"), rateLimitResult.headers),
+    });
+  }
+
+  const kvData = await kvGetWithStale<ValorantApiPayload>(VALORANT_CACHE_KEY, {
+    freshMs: VALORANT_CACHE_TTL_MS,
+    staleMs: VALORANT_STALE_TTL_MS,
+  });
+
+  if (kvData) {
+    if (kvData.isStale) {
+      staleKvPayload = kvData.value;
+    } else {
+      valorantCache = {
+        payload: kvData.value,
+        cachedAt: now - kvData.ageMs,
+      };
+      return NextResponse.json(kvData.value, {
+        headers: mergeHeaders(getCacheHeaders("HIT_KV"), rateLimitResult.headers),
+      });
+    }
+  }
+
+  if (valorantInFlight) {
+    try {
+      const sharedPayload = await valorantInFlight;
+      return NextResponse.json(sharedPayload, {
+        headers: mergeHeaders(getCacheHeaders("SHARED"), rateLimitResult.headers),
+      });
+    } catch {
+      // Continue and try a new fetch below.
+    }
+  }
+
+  const fetchTask = fetchFreshValorantData();
+  valorantInFlight = fetchTask;
+
+  try {
+    const payload = await fetchTask;
+    valorantCache = { payload, cachedAt: Date.now() };
+    void kvSetWithTimestamp(
+      VALORANT_CACHE_KEY,
+      payload,
+      VALORANT_CACHE_TTL_MS + VALORANT_STALE_TTL_MS
+    );
+    return NextResponse.json(payload, {
+      headers: mergeHeaders(getCacheHeaders("MISS"), rateLimitResult.headers),
     });
   } catch (error) {
+    if (
+      valorantCache &&
+      now - valorantCache.cachedAt < VALORANT_CACHE_TTL_MS + VALORANT_STALE_TTL_MS
+    ) {
+      return NextResponse.json(
+        { ...valorantCache.payload, stale: true },
+        { headers: mergeHeaders(getCacheHeaders("STALE"), rateLimitResult.headers) }
+      );
+    }
+
+    if (staleKvPayload) {
+      return NextResponse.json(
+        { ...staleKvPayload, stale: true },
+        { headers: mergeHeaders(getCacheHeaders("STALE"), rateLimitResult.headers) }
+      );
+    }
+
+    if (error instanceof ValorantApiError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+          retryAfter: error.retryAfter,
+        },
+        { status: error.status, headers: mergeHeaders(rateLimitResult.headers) }
+      );
+    }
+
     console.error("Valorant API error:", error);
-    const message = error instanceof Error ? error.message : "Failed to fetch Valorant data";
-    const isRateLimit = message.includes('429');
     return NextResponse.json(
-      { error: isRateLimit ? "Rate limited by the Valorant API. Please try again in a minute." : "Failed to fetch Valorant data", code: isRateLimit ? "RATE_LIMITED" : undefined },
-      { status: isRateLimit ? 429 : 500 }
+      {
+        error: "Failed to fetch Valorant data",
+      },
+      { status: 500, headers: mergeHeaders(rateLimitResult.headers) }
     );
+  } finally {
+    if (valorantInFlight === fetchTask) {
+      valorantInFlight = null;
+    }
   }
 }

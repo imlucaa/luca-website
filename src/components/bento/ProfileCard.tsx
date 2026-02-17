@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanyard } from '@/hooks/useLanyard';
 import { useDiscordUser } from '@/hooks/useDiscordUser';
 import { STATUS_COLORS } from '@/lib/constants';
@@ -11,50 +12,13 @@ const API_BASE = 'https://camilo404.azurewebsites.net';
 
 export function ProfileCard() {
   const { data, isLoading, error } = useLanyard();
-  const { data: userData, isLoading: userLoading } = useDiscordUser();
+  const { data: userData } = useDiscordUser();
 
   const avatarUrl = data?.discord_user?.id
     ? `${API_BASE}/v1/avatar/${data.discord_user.id}`
     : 'https://cdn.discordapp.com/embed/avatars/0.png';
 
-  // Banner with caching: fetch via proxy API, cache as base64 in localStorage
-  const BANNER_CACHE_KEY = 'cached_profile_banner';
-  const [bannerSrc, setBannerSrc] = useState<string | null>(() => {
-    // Initialize with cached banner to avoid flash of empty space
-    if (typeof window !== 'undefined') {
-      try {
-        return localStorage.getItem(BANNER_CACHE_KEY);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
 
-  useEffect(() => {
-    const userId = data?.discord_user?.id;
-    if (!userId) return;
-
-    // Fetch banner through our proxy API (returns base64 data URL)
-    fetch(`/api/banner?id=${userId}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Banner not found');
-        return res.json();
-      })
-      .then(({ dataUrl }) => {
-        if (dataUrl) {
-          setBannerSrc(dataUrl);
-          try {
-            localStorage.setItem(BANNER_CACHE_KEY, dataUrl);
-          } catch {
-            // localStorage full or unavailable
-          }
-        }
-      })
-      .catch(() => {
-        // Failed to fetch — keep using cached version (already set in initial state)
-      });
-  }, [data?.discord_user?.id]);
 
   const avatarDecorationUrl = data?.discord_user?.avatar_decoration_data
     ? `https://cdn.discordapp.com/avatar-decoration-presets/${data.discord_user.avatar_decoration_data.asset}.png?size=96`
@@ -84,21 +48,6 @@ export function ProfileCard() {
     ? `https://cdn.discordapp.com/clan-badges/${clanGuildId}/${clanBadge}.png?size=32`
     : null;
 
-  // Get Discord theme/accent color for card background
-  const themeColors = userData?.user_profile?.theme_colors;
-  const hasThemeColor = Array.isArray(themeColors) && themeColors.length > 0;
-  const themeColor = hasThemeColor ? themeColors[0] : (userData?.user?.accent_color ?? null);
-  
-  const cardBgColor = (() => {
-    if (themeColor !== null && themeColor !== undefined) {
-      const r = Math.round(((themeColor >> 16) & 0xFF) * 0.35);
-      const g = Math.round(((themeColor >> 8) & 0xFF) * 0.35);
-      const b = Math.round((themeColor & 0xFF) * 0.35);
-      return `rgb(${r}, ${g}, ${b})`;
-    }
-    return '#232428';
-  })();
-
   // Badge tooltip state (click to show)
   const [activeBadgeId, setActiveBadgeId] = useState<string | null>(null);
   const badgeTooltipRef = useRef<HTMLDivElement>(null);
@@ -109,19 +58,29 @@ export function ProfileCard() {
   const [guildLoading, setGuildLoading] = useState(false);
   const clanTooltipRef = useRef<HTMLDivElement>(null);
 
-  // Fetch guild data when tooltip opens
-  useEffect(() => {
-    if (showClanTooltip && clanGuildId && !guildData && !guildLoading) {
-      setGuildLoading(true);
-      fetch(`/api/discord-guild?id=${clanGuildId}`)
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data) setGuildData(data);
-        })
-        .catch(() => {})
-        .finally(() => setGuildLoading(false));
+  const fetchClanData = useCallback(async () => {
+    if (!clanGuildId || guildData || guildLoading) return;
+
+    setGuildLoading(true);
+    try {
+      const response = await fetch(`/api/discord-guild?id=${clanGuildId}`);
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (payload) setGuildData(payload);
+    } catch {
+      // Ignore and keep tooltip minimal.
+    } finally {
+      setGuildLoading(false);
     }
-  }, [showClanTooltip, clanGuildId, guildData, guildLoading]);
+  }, [clanGuildId, guildData, guildLoading]);
+
+  const handleClanToggle = useCallback(() => {
+    const shouldOpen = !showClanTooltip;
+    setShowClanTooltip(shouldOpen);
+    if (shouldOpen) {
+      void fetchClanData();
+    }
+  }, [showClanTooltip, fetchClanData]);
 
   // Close tooltips on outside click
   useEffect(() => {
@@ -181,8 +140,43 @@ export function ProfileCard() {
   if (isLoading) {
     return (
       <BentoCard colSpan={4} className="profile-card-merged">
-        <div className="flex items-center justify-center h-full">
-          <div className="text-sm text-gray-500">Loading profile...</div>
+        <div className="pcm-loading-shell" aria-label="Loading profile" aria-busy="true">
+          <div className="pcm-loading-header">
+            <div className="pcm-loading-avatar pcm-loading-shimmer" />
+            <div className="pcm-loading-head-meta">
+              <div className="pcm-loading-line pcm-loading-line-lg pcm-loading-shimmer" />
+              <div className="pcm-loading-line pcm-loading-line-md pcm-loading-shimmer" />
+              <div className="pcm-loading-badges">
+                <span className="pcm-loading-badge pcm-loading-shimmer" />
+                <span className="pcm-loading-badge pcm-loading-shimmer" />
+                <span className="pcm-loading-badge pcm-loading-shimmer" />
+              </div>
+            </div>
+          </div>
+
+          <div className="pcm-loading-message-list">
+            <div className="pcm-loading-message-row">
+              <span className="pcm-loading-message-dot pcm-loading-shimmer" />
+              <div className="pcm-loading-message-lines">
+                <div className="pcm-loading-line pcm-loading-line-chat pcm-loading-shimmer" />
+                <div className="pcm-loading-line pcm-loading-line-chat-short pcm-loading-shimmer" />
+              </div>
+            </div>
+            <div className="pcm-loading-message-row">
+              <span className="pcm-loading-message-dot pcm-loading-shimmer" />
+              <div className="pcm-loading-message-lines">
+                <div className="pcm-loading-line pcm-loading-line-chat pcm-loading-shimmer" />
+                <div className="pcm-loading-line pcm-loading-line-chat-mid pcm-loading-shimmer" />
+              </div>
+            </div>
+          </div>
+
+          <div className="pcm-loading-footer">
+            <span className="pcm-loading-icon pcm-loading-shimmer" />
+            <span className="pcm-loading-icon pcm-loading-shimmer" />
+            <span className="pcm-loading-icon pcm-loading-shimmer" />
+            <span className="pcm-loading-icon pcm-loading-shimmer" />
+          </div>
         </div>
       </BentoCard>
     );
@@ -203,19 +197,25 @@ export function ProfileCard() {
       {/* Top Section: Avatar + Info */}
       <div className="pcm-header">
         {/* Avatar */}
-        <div className="pcm-avatar-wrap">
+          <div className="pcm-avatar-wrap">
           <div className="pcm-avatar-container">
-            <img
+            <Image
               src={avatarUrl}
               alt="Avatar"
               className="pcm-avatar-img"
+              width={96}
+              height={96}
+              unoptimized
             />
             {avatarDecorationUrl && (
-              <img
+              <Image
                 src={avatarDecorationUrl}
                 alt="Avatar Decoration"
                 className="pcm-avatar-decoration"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                width={110}
+                height={110}
+                unoptimized
               />
             )}
             <div
@@ -234,15 +234,18 @@ export function ProfileCard() {
               <div className="clan-tag-wrapper" ref={clanTooltipRef}>
                 <button
                   className="clan-tag-v2"
-                  onClick={() => setShowClanTooltip(!showClanTooltip)}
+                  onClick={handleClanToggle}
                   type="button"
                 >
                   {clanBadgeUrl && (
-                    <img
+                    <Image
                       src={clanBadgeUrl}
                       alt="Clan Badge"
                       className="clan-badge-icon-v2"
                       onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      width={20}
+                      height={20}
+                      unoptimized
                     />
                   )}
                   <span>{clanTag}</span>
@@ -253,7 +256,7 @@ export function ProfileCard() {
                   <div className="clan-tooltip-popup">
                     {clanGuildId && (
                       <div className="clan-tooltip-banner">
-                        <img
+                        <Image
                           src={`https://cdn.discordapp.com/discovery-splashes/${clanGuildId}/banner.png?size=480`}
                           alt=""
                           className="clan-tooltip-banner-img"
@@ -261,13 +264,23 @@ export function ProfileCard() {
                             const parent = e.currentTarget.parentElement;
                             if (parent) parent.style.display = 'none';
                           }}
+                          width={480}
+                          height={180}
+                          unoptimized
                         />
                       </div>
                     )}
                     <div className="clan-tooltip-content">
                       <div className="clan-tooltip-name">
                         {clanBadgeUrl && (
-                          <img src={clanBadgeUrl} alt="" className="clan-tooltip-badge" />
+                          <Image
+                            src={clanBadgeUrl}
+                            alt=""
+                            className="clan-tooltip-badge"
+                            width={18}
+                            height={18}
+                            unoptimized
+                          />
                         )}
                         <span>{guildData?.name || clanTag}</span>
                       </div>
@@ -319,12 +332,15 @@ export function ProfileCard() {
                       className="badge-tooltip-wrapper"
                       ref={isActive ? badgeTooltipRef : undefined}
                     >
-                      <img
+                      <Image
                         src={`${API_BASE}/v1/badge/${badge.icon}.png`}
                         alt={badge.description}
                         className="profile-badge-icon-v2"
                         onClick={() => setActiveBadgeId(isActive ? null : badge.id)}
                         onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        width={20}
+                        height={20}
+                        unoptimized
                       />
                       {isActive && (
                         <div className="badge-tooltip">
@@ -371,18 +387,6 @@ export function ProfileCard() {
         </div>
       </div>
 
-      {/* Banner Image */}
-      <div className="pcm-banner">
-        {bannerSrc ? (
-          <img
-            src={bannerSrc}
-            alt="Profile Banner"
-            className="pcm-banner-img"
-          />
-        ) : (
-          <div className="pcm-banner-placeholder" />
-        )}
-      </div>
 
       {/* Connections Row */}
       <div className="pcm-connections">

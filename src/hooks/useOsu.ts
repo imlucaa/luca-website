@@ -2,34 +2,69 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { OsuManiaData } from '@/lib/types';
+import { ApiError, fetchJson } from '@/lib/api-client';
+import { readLocalCache, writeLocalCache } from '@/lib/local-cache';
 
-export function useOsu(searchUsername?: string) {
+export function useOsu() {
   const [data, setData] = useState<OsuManiaData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [retryAfter, setRetryAfter] = useState<number | null>(null);
+  const [isStale, setIsStale] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+
+  const cacheKey = 'osu:default';
+
+  useEffect(() => {
+    const cached = readLocalCache<OsuManiaData>(cacheKey);
+    if (!cached) {
+      setData(null);
+      setLastUpdatedAt(null);
+      setIsStale(false);
+      return;
+    }
+
+    setData(cached.data);
+    setLastUpdatedAt(cached.savedAt);
+    setIsStale(true);
+    setIsFetching(false);
+  }, [cacheKey]);
 
   const fetchOsuData = useCallback(async () => {
-    setLoading(true);
+    setIsFetching(true);
+
     try {
-      let url = '/api/osu';
-      if (searchUsername) {
-        url += `?username=${encodeURIComponent(searchUsername)}`;
-      }
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch osu! data');
-      }
-      const result = await response.json();
+      const result = await fetchJson<OsuManiaData>('/api/osu');
       setData(result);
+      writeLocalCache(cacheKey, result);
       setError(null);
+      setErrorCode(null);
+      setRetryAfter(null);
+      setIsStale(false);
+      setLastUpdatedAt(Date.now());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setData(null);
+      const cached = readLocalCache<OsuManiaData>(cacheKey);
+
+      if (cached) {
+        setData(cached.data);
+        setLastUpdatedAt(cached.savedAt);
+        setIsStale(true);
+      }
+
+      if (err instanceof ApiError) {
+        setError(err.message);
+        setErrorCode(err.code ?? null);
+        setRetryAfter(err.retryAfter ?? null);
+      } else {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+        setErrorCode(null);
+        setRetryAfter(null);
+      }
     } finally {
-      setLoading(false);
+      setIsFetching(false);
     }
-  }, [searchUsername]);
+  }, [cacheKey]);
 
   const retry = useCallback(() => {
     fetchOsuData();
@@ -37,12 +72,20 @@ export function useOsu(searchUsername?: string) {
 
   useEffect(() => {
     fetchOsuData();
-    // Only auto-refresh for default user (not searches)
-    if (!searchUsername) {
-      const interval = setInterval(fetchOsuData, 5 * 60 * 1000);
-      return () => clearInterval(interval);
-    }
-  }, [fetchOsuData, searchUsername]);
+    const interval = setInterval(fetchOsuData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchOsuData]);
 
-  return { data, loading, error, refetch: fetchOsuData, retry };
+  return {
+    data,
+    loading: isFetching && !data,
+    isFetching,
+    error,
+    errorCode,
+    retryAfter,
+    isStale,
+    lastUpdatedAt,
+    refetch: fetchOsuData,
+    retry,
+  };
 }

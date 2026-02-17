@@ -1,4 +1,6 @@
 // Discord/Lanyard Types
+export type UnknownObject = Record<string, unknown>;
+
 export interface LanyardData {
   kv: Record<string, string>;
   discord_user: {
@@ -93,9 +95,9 @@ export interface DiscordUserProfile {
       sku_id: string;
       expires_at: number | null;
     };
-    collectibles: any;
+    collectibles: UnknownObject | null;
     discriminator: string;
-    display_name_styles: any;
+    display_name_styles: UnknownObject | null;
     public_flags: number;
     primary_guild?: {
       identity_guild_id: string;
@@ -115,7 +117,7 @@ export interface DiscordUserProfile {
     accent_color?: number | null;
     bio: string;
   };
-  connected_accounts: any[];
+  connected_accounts: UnknownObject[];
   premium_type: number;
   premium_since?: string;
   premium_guild_since?: string;
@@ -124,12 +126,12 @@ export interface DiscordUserProfile {
     bio: string;
     accent_color: number | null;
     pronouns: string;
-    profile_effect: any;
-    collectibles: any[];
+    profile_effect: UnknownObject | null;
+    collectibles: UnknownObject[];
     banner?: string;
     theme_colors: number[];
-    popout_animation_particle_type: any;
-    emoji: any;
+    popout_animation_particle_type: UnknownObject | string | null;
+    emoji: UnknownObject | null;
   };
   badges: Array<{
     id: string;
@@ -137,8 +139,8 @@ export interface DiscordUserProfile {
     icon: string;
     link: string;
   }>;
-  guild_badges: any[];
-  widgets: any[];
+  guild_badges: UnknownObject[];
+  widgets: UnknownObject[];
 }
 
 // Last.fm Types
@@ -232,7 +234,7 @@ export interface ValorantMMR {
     patched_tier: string;
     season: string;
   };
-  by_season?: Record<string, any>;
+  by_season?: Record<string, unknown>;
 }
 
 // Match History Types
@@ -341,7 +343,7 @@ export interface ValorantMatchTeam {
     members: string[];
     name: string;
     tag: string;
-    customization: any;
+    customization: UnknownObject;
   };
 }
 
@@ -352,14 +354,14 @@ export interface ValorantMatch {
     red: ValorantMatchPlayer[];
     blue: ValorantMatchPlayer[];
   };
-  observers: any[];
-  coaches: any[];
+  observers: UnknownObject[];
+  coaches: UnknownObject[];
   teams: {
     red: ValorantMatchTeam;
     blue: ValorantMatchTeam;
   };
-  rounds: any[];
-  kills: any[];
+  rounds: UnknownObject[];
+  kills: UnknownObject[];
 }
 
 // MMR History Types
@@ -578,4 +580,3 @@ export interface OsuManiaData {
   bestScores: OsuScore[];
   coverColor?: string | null;
 }
-

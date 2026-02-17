@@ -1,11 +1,32 @@
 'use client';
 
+import Image from 'next/image';
+import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useSteam } from '@/hooks/useSteam';
 import { BentoCard } from '@/components/ui/BentoCard';
 
+const STEAM_ICON_FALLBACK =
+  'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22 viewBox=%220 0 48 48%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3C/svg%3E';
+
+function SteamGameIcon({ src, alt }: { src: string; alt: string }) {
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <Image
+      src={hasError ? STEAM_ICON_FALLBACK : src}
+      alt={alt}
+      className="steam-game-icon"
+      width={48}
+      height={48}
+      unoptimized
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
 export function SteamActivity() {
-  const { games, isLoading, refetch } = useSteam();
+  const { games, error, isLoading, isStale, refetch } = useSteam();
 
   const handleRefresh = () => {
     refetch();
@@ -15,10 +36,13 @@ export function SteamActivity() {
     <BentoCard colSpan={2}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <img
+          <Image
             src="https://cdn.simpleicons.org/steam/white"
             alt="Steam"
             className="w-4 h-4 opacity-60"
+            width={16}
+            height={16}
+            unoptimized
           />
           <span className="text-label mb-0">Steam Activity</span>
         </div>
@@ -34,6 +58,8 @@ export function SteamActivity() {
       <div className="flex flex-col gap-2">
         {isLoading ? (
           <div className="text-xs text-gray-600 italic">Loading games...</div>
+        ) : error && games.length === 0 ? (
+          <div className="text-xs text-red-400 italic">Could not load Steam activity.</div>
         ) : games.length === 0 ? (
           <div className="text-xs text-gray-600 italic">
             No recent games. Make sure your Steam profile&apos;s &quot;Game details&quot; is set to
@@ -50,15 +76,7 @@ export function SteamActivity() {
                 className="steam-game-item"
                 onClick={() => window.open(`https://store.steampowered.com/app/${game.appid}`, '_blank')}
               >
-                <img
-                  src={iconUrl}
-                  alt={game.name}
-                  className="steam-game-icon"
-                  onError={(e) => {
-                    e.currentTarget.src =
-                      'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22 viewBox=%220 0 48 48%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3C/svg%3E';
-                  }}
-                />
+                <SteamGameIcon src={iconUrl} alt={game.name} />
                 <div className="steam-game-info">
                   <div className="steam-game-name">{game.name}</div>
                   <div className="steam-game-hours">
@@ -74,6 +92,9 @@ export function SteamActivity() {
           })
         )}
       </div>
+      {isStale && (
+        <div className="mt-2 text-[10px] text-amber-300/80">Showing cached Steam data</div>
+      )}
     </BentoCard>
   );
 }

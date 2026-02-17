@@ -1,11 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import { OsuScore } from '@/lib/types';
 import { BentoCard } from '@/components/ui/BentoCard';
 
 interface OsuTopPlaysProps {
   scores: OsuScore[];
-  coverColor?: string | null;
 }
 
 const RANK_COLORS: Record<string, string> = {
@@ -36,12 +36,10 @@ function formatAccuracy(accuracy: number): string {
   return `${(accuracy * 100).toFixed(2)}%`;
 }
 
-export function OsuTopPlays({ scores, coverColor }: OsuTopPlaysProps) {
-  const cardStyle = coverColor ? { background: coverColor, borderColor: 'rgba(255, 255, 255, 0.08)' } : undefined;
-
+export function OsuTopPlays({ scores }: OsuTopPlaysProps) {
   if (!scores || scores.length === 0) {
     return (
-      <BentoCard colSpan={4} style={cardStyle}>
+      <BentoCard colSpan={4}>
         <span className="text-label">Top Plays</span>
         <div className="text-center py-8">
           <p className="text-gray-400">No top plays found</p>
@@ -52,7 +50,7 @@ export function OsuTopPlays({ scores, coverColor }: OsuTopPlaysProps) {
   }
 
   return (
-    <BentoCard colSpan={4} style={cardStyle}>
+    <BentoCard colSpan={4}>
       <span className="text-label mb-3">Top Plays</span>
       <div className="osu-scores-list">
         {scores.map((score, index) => {
@@ -76,13 +74,16 @@ export function OsuTopPlays({ scores, coverColor }: OsuTopPlaysProps) {
               {/* Beatmap Cover */}
               <div className="osu-score-cover">
                 {coverUrl ? (
-                  <img
+                  <Image
                     src={coverUrl}
                     alt={score.beatmapset?.title || 'Beatmap'}
                     className="osu-score-cover-img"
                     onError={(e) => {
                       e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"%3E%3Crect fill="%23333" width="60" height="60"/%3E%3C/svg%3E';
                     }}
+                    width={56}
+                    height={56}
+                    unoptimized
                   />
                 ) : (
                   <div className="osu-score-cover-placeholder" />

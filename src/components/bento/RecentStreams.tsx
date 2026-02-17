@@ -1,12 +1,13 @@
 'use client';
 
+import Image from 'next/image';
 import { Music, RefreshCw } from 'lucide-react';
 import { useLastFm } from '@/hooks/useLastFm';
 import { BentoCard } from '@/components/ui/BentoCard';
 import { getTimeAgo, formatDuration } from '@/lib/utils';
 
 export function RecentStreams() {
-  const { tracks, isLoading, refetch } = useLastFm(10);
+  const { tracks, error, isLoading, isStale, refetch } = useLastFm(10);
 
   const handleRefresh = () => {
     refetch();
@@ -31,6 +32,8 @@ export function RecentStreams() {
       <div className="tracks-list">
         {isLoading ? (
           <div className="text-sm text-gray-500 italic">Loading history...</div>
+        ) : error && tracks.length === 0 ? (
+          <div className="text-xs text-red-400 p-2">Could not load recent streams.</div>
         ) : tracks.length === 0 ? (
           <div className="text-xs text-gray-500 p-2">No recent tracks</div>
         ) : (
@@ -71,13 +74,13 @@ export function RecentStreams() {
                   className="track-row"
                   onClick={() => window.open(trackUrl, '_blank')}
                 >
-                  <img
+                  <Image
                     src={albumArt}
                     alt={trackName}
                     className="track-album-art"
-                    onError={(e) => {
-                      e.currentTarget.src = FALLBACK_ART;
-                    }}
+                    width={48}
+                    height={48}
+                    unoptimized
                   />
                   <div className="track-info">
                     <div className="track-name">{trackName}</div>
@@ -105,6 +108,9 @@ export function RecentStreams() {
             })
         )}
       </div>
+      {isStale && (
+        <div className="mt-2 text-[10px] text-amber-300/80">Showing cached stream data</div>
+      )}
     </BentoCard>
   );
 }
