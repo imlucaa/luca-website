@@ -1,3 +1,5 @@
+import { getRedis } from './redis';
+
 interface CacheEnvelope<T> {
   value: T;
   cachedAt: number;
@@ -17,10 +19,12 @@ export interface KvReadResult<T> {
   value: T;
   ageMs: number;
   isStale: boolean;
-  source: 'memory' | 'remote';
+  source: 'memory' | 'redis';
 }
 
+// In-memory fallback store (used when Redis is unavailable)
 declare global {
+  // eslint-disable-next-line no-var
   var __lucaKvMemoryStore: Map<string, MemoryEntry> | undefined;
 }
 
@@ -28,10 +32,6 @@ const memoryStore = globalThis.__lucaKvMemoryStore ?? new Map<string, MemoryEntr
 if (!globalThis.__lucaKvMemoryStore) {
   globalThis.__lucaKvMemoryStore = memoryStore;
 }
-
-const KV_REST_API_URL = process.env.KV_REST_API_URL;
-const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
-const hasRemoteKv = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
 
 function nowMs() {
   return Date.now();
@@ -66,53 +66,17 @@ function storeInMemory(key: string, payload: string, ttlMs: number) {
   });
 }
 
-async function readFromRemote(key: string): Promise<string | null> {
-  if (!hasRemoteKv) return null;
-
-  try {
-    const response = await fetch(`${KV_REST_API_URL}/get/${encodeURIComponent(key)}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${KV_REST_API_TOKEN}`,
-      },
-      cache: 'no-store',
-    });
-
-    if (!response.ok) return null;
-
-    const body = await response.json() as { result?: unknown };
-    if (typeof body.result === 'string') {
-      return body.result;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function writeToRemote(key: string, payload: string, ttlSec: number): Promise<void> {
-  if (!hasRemoteKv) return;
-
-  try {
-    await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}/${encodeURIComponent(payload)}?EX=${ttlSec}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${KV_REST_API_TOKEN}`,
-      },
-      cache: 'no-store',
-    });
-  } catch {
-    // Keep working with local memory cache.
-  }
-}
-
+/**
+ * Read from Redis with stale-while-revalidate semantics.
+ * Falls back to in-memory store if Redis is unavailable.
+ */
 export async function kvGetWithStale<T>(key: string, options: KvReadOptions): Promise<KvReadResult<T> | null> {
   const now = nowMs();
   cleanupExpiredMemoryEntries(now);
 
   const maxAgeMs = options.freshMs + options.staleMs;
 
+  // Try in-memory first (fastest)
   const memoryHit = memoryStore.get(key);
   if (memoryHit && memoryHit.expiresAt > now) {
     const parsed = parseEnvelope<T>(memoryHit.payload);
@@ -127,35 +91,41 @@ export async function kvGetWithStale<T>(key: string, options: KvReadOptions): Pr
         };
       }
     }
-
     memoryStore.delete(key);
   }
 
-  const remotePayload = await readFromRemote(key);
-  if (!remotePayload) {
-    return null;
+  // Try Redis
+  try {
+    const redis = await getRedis();
+    if (redis) {
+      const redisPayload = await redis.get(key);
+      if (redisPayload) {
+        const parsed = parseEnvelope<T>(redisPayload);
+        if (parsed) {
+          const ageMs = now - parsed.cachedAt;
+          if (ageMs <= maxAgeMs) {
+            // Populate in-memory cache from Redis
+            storeInMemory(key, redisPayload, maxAgeMs - ageMs);
+            return {
+              value: parsed.value,
+              ageMs,
+              isStale: ageMs > options.freshMs,
+              source: 'redis',
+            };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[kv-cache] Redis read failed, using memory fallback:', (err as Error).message);
   }
 
-  const parsedRemote = parseEnvelope<T>(remotePayload);
-  if (!parsedRemote) {
-    return null;
-  }
-
-  const remoteAgeMs = now - parsedRemote.cachedAt;
-  if (remoteAgeMs > maxAgeMs) {
-    return null;
-  }
-
-  storeInMemory(key, remotePayload, maxAgeMs);
-
-  return {
-    value: parsedRemote.value,
-    ageMs: remoteAgeMs,
-    isStale: remoteAgeMs > options.freshMs,
-    source: 'remote',
-  };
+  return null;
 }
 
+/**
+ * Write to both Redis and in-memory cache with a timestamp envelope.
+ */
 export async function kvSetWithTimestamp<T>(key: string, value: T, ttlMs: number): Promise<void> {
   const envelope: CacheEnvelope<T> = {
     value,
@@ -163,8 +133,18 @@ export async function kvSetWithTimestamp<T>(key: string, value: T, ttlMs: number
   };
 
   const payload = JSON.stringify(envelope);
+
+  // Always store in memory
   storeInMemory(key, payload, ttlMs);
 
-  const ttlSeconds = Math.max(1, Math.ceil(ttlMs / 1000));
-  await writeToRemote(key, payload, ttlSeconds);
+  // Store in Redis
+  try {
+    const redis = await getRedis();
+    if (redis) {
+      const ttlSeconds = Math.max(1, Math.ceil(ttlMs / 1000));
+      await redis.setEx(key, ttlSeconds, payload);
+    }
+  } catch (err) {
+    console.warn('[kv-cache] Redis write failed:', (err as Error).message);
+  }
 }

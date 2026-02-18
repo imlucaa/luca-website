@@ -13,9 +13,12 @@ const VALORANT_TAG = "006";
 const VALORANT_REGION = "ap";
 const VALORANT_CACHE_TTL_MS = 2 * 60 * 1000;
 const VALORANT_STALE_TTL_MS = 10 * 60 * 1000;
-const VALORANT_CACHE_KEY = "api:valorant:default:v1";
 const VALORANT_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const VALORANT_RATE_LIMIT_MAX_REQUESTS = 45;
+
+// Search-specific rate limits (stricter to prevent API abuse)
+const VALORANT_SEARCH_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const VALORANT_SEARCH_RATE_LIMIT_MAX_REQUESTS = 15;
 
 interface ValorantApiPayload {
   account: unknown;
@@ -43,8 +46,9 @@ class ValorantApiError extends Error {
   }
 }
 
-let valorantCache: { payload: ValorantApiPayload; cachedAt: number } | null = null;
-let valorantInFlight: Promise<ValorantApiPayload> | null = null;
+// Per-user in-memory caches
+const userCaches = new Map<string, { payload: ValorantApiPayload; cachedAt: number }>();
+const userInFlight = new Map<string, Promise<ValorantApiPayload>>();
 
 function getRetryAfterSeconds(value: string | null): number | undefined {
   if (!value) return undefined;
@@ -69,6 +73,10 @@ function mergeHeaders(...headerSets: Array<HeadersInit | undefined>): HeadersIni
     }
   }
   return merged;
+}
+
+function getCacheKey(name: string, tag: string): string {
+  return `api:valorant:${name.toLowerCase()}:${tag.toLowerCase()}`;
 }
 
 // Helper function to calculate aggregated stats from matches
@@ -96,7 +104,7 @@ function calculateAggregatedStats(
         won,
         map: match.metadata.map,
         mode: match.metadata.mode,
-        rr_change: 0, // Will be populated from MMR history if available
+        rr_change: 0,
       };
     })
     .filter((m) => m !== null);
@@ -224,10 +232,7 @@ function calculateAggregatedStats(
   };
 }
 
-async function fetchFreshValorantData(): Promise<ValorantApiPayload> {
-  const playerName = VALORANT_NAME;
-  const playerTag = VALORANT_TAG;
-
+async function fetchFreshValorantData(playerName: string, playerTag: string): Promise<ValorantApiPayload> {
   const headers: HeadersInit = {};
   if (process.env.HENRIK_API_KEY) {
     headers["Authorization"] = process.env.HENRIK_API_KEY;
@@ -253,7 +258,7 @@ async function fetchFreshValorantData(): Promise<ValorantApiPayload> {
       );
     }
     if (accountResponse.status === 404) {
-      throw new ValorantApiError(`Player "${playerName}#${playerTag}" not found`, 404);
+      throw new ValorantApiError(`Player "${playerName}#${playerTag}" not found`, 404, "NOT_FOUND");
     }
     throw new ValorantApiError("Failed to fetch Valorant data", 502);
   }
@@ -326,10 +331,19 @@ async function fetchFreshValorantData(): Promise<ValorantApiPayload> {
 }
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const searchName = searchParams.get('name');
+  const searchTag = searchParams.get('tag');
+  const isSearch = Boolean(searchName && searchTag);
+  const playerName = searchName || VALORANT_NAME;
+  const playerTag = searchTag || VALORANT_TAG;
+  const cacheKey = getCacheKey(playerName, playerTag);
+
+  // Apply stricter rate limits for search requests
   const rateLimitResult = rateLimit(request, {
-    namespace: "api:valorant",
-    limit: VALORANT_RATE_LIMIT_MAX_REQUESTS,
-    windowMs: VALORANT_RATE_LIMIT_WINDOW_MS,
+    namespace: isSearch ? "api:valorant:search" : "api:valorant",
+    limit: isSearch ? VALORANT_SEARCH_RATE_LIMIT_MAX_REQUESTS : VALORANT_RATE_LIMIT_MAX_REQUESTS,
+    windowMs: isSearch ? VALORANT_SEARCH_RATE_LIMIT_WINDOW_MS : VALORANT_RATE_LIMIT_WINDOW_MS,
   });
 
   if (!rateLimitResult.ok) {
@@ -351,13 +365,16 @@ export async function GET(request: Request) {
   const now = Date.now();
   let staleKvPayload: ValorantApiPayload | null = null;
 
-  if (valorantCache && now - valorantCache.cachedAt < VALORANT_CACHE_TTL_MS) {
-    return NextResponse.json(valorantCache.payload, {
+  // Check in-memory cache for this user
+  const memCache = userCaches.get(cacheKey);
+  if (memCache && now - memCache.cachedAt < VALORANT_CACHE_TTL_MS) {
+    return NextResponse.json(memCache.payload, {
       headers: mergeHeaders(getCacheHeaders("HIT"), rateLimitResult.headers),
     });
   }
 
-  const kvData = await kvGetWithStale<ValorantApiPayload>(VALORANT_CACHE_KEY, {
+  // Check Redis/KV cache
+  const kvData = await kvGetWithStale<ValorantApiPayload>(cacheKey, {
     freshMs: VALORANT_CACHE_TTL_MS,
     staleMs: VALORANT_STALE_TTL_MS,
   });
@@ -366,19 +383,21 @@ export async function GET(request: Request) {
     if (kvData.isStale) {
       staleKvPayload = kvData.value;
     } else {
-      valorantCache = {
+      userCaches.set(cacheKey, {
         payload: kvData.value,
         cachedAt: now - kvData.ageMs,
-      };
+      });
       return NextResponse.json(kvData.value, {
         headers: mergeHeaders(getCacheHeaders("HIT_KV"), rateLimitResult.headers),
       });
     }
   }
 
-  if (valorantInFlight) {
+  // Check if there's already an in-flight request for this user
+  const existingFlight = userInFlight.get(cacheKey);
+  if (existingFlight) {
     try {
-      const sharedPayload = await valorantInFlight;
+      const sharedPayload = await existingFlight;
       return NextResponse.json(sharedPayload, {
         headers: mergeHeaders(getCacheHeaders("SHARED"), rateLimitResult.headers),
       });
@@ -387,14 +406,14 @@ export async function GET(request: Request) {
     }
   }
 
-  const fetchTask = fetchFreshValorantData();
-  valorantInFlight = fetchTask;
+  const fetchTask = fetchFreshValorantData(playerName, playerTag);
+  userInFlight.set(cacheKey, fetchTask);
 
   try {
     const payload = await fetchTask;
-    valorantCache = { payload, cachedAt: Date.now() };
+    userCaches.set(cacheKey, { payload, cachedAt: Date.now() });
     void kvSetWithTimestamp(
-      VALORANT_CACHE_KEY,
+      cacheKey,
       payload,
       VALORANT_CACHE_TTL_MS + VALORANT_STALE_TTL_MS
     );
@@ -403,11 +422,11 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     if (
-      valorantCache &&
-      now - valorantCache.cachedAt < VALORANT_CACHE_TTL_MS + VALORANT_STALE_TTL_MS
+      memCache &&
+      now - memCache.cachedAt < VALORANT_CACHE_TTL_MS + VALORANT_STALE_TTL_MS
     ) {
       return NextResponse.json(
-        { ...valorantCache.payload, stale: true },
+        { ...memCache.payload, stale: true },
         { headers: mergeHeaders(getCacheHeaders("STALE"), rateLimitResult.headers) }
       );
     }
@@ -438,8 +457,8 @@ export async function GET(request: Request) {
       { status: 500, headers: mergeHeaders(rateLimitResult.headers) }
     );
   } finally {
-    if (valorantInFlight === fetchTask) {
-      valorantInFlight = null;
+    if (userInFlight.get(cacheKey) === fetchTask) {
+      userInFlight.delete(cacheKey);
     }
   }
 }

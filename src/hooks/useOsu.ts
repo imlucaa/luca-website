@@ -5,7 +5,7 @@ import { OsuManiaData } from '@/lib/types';
 import { ApiError, fetchJson } from '@/lib/api-client';
 import { readLocalCache, writeLocalCache } from '@/lib/local-cache';
 
-export function useOsu() {
+export function useOsu(searchUsername?: string | null) {
   const [data, setData] = useState<OsuManiaData | null>(null);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,9 +13,12 @@ export function useOsu() {
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
   const [isStale, setIsStale] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const cacheKey = 'osu:default';
+  const isSearch = Boolean(searchUsername);
+  const cacheKey = isSearch ? `osu:search:${searchUsername!.toLowerCase()}` : 'osu:default';
 
+  // Load from local cache on mount or when search changes
   useEffect(() => {
     const cached = readLocalCache<OsuManiaData>(cacheKey);
     if (!cached) {
@@ -33,9 +36,14 @@ export function useOsu() {
 
   const fetchOsuData = useCallback(async () => {
     setIsFetching(true);
+    if (isSearch) setIsSearching(true);
 
     try {
-      const result = await fetchJson<OsuManiaData>('/api/osu');
+      const url = isSearch
+        ? `/api/osu?username=${encodeURIComponent(searchUsername!)}`
+        : '/api/osu';
+
+      const result = await fetchJson<OsuManiaData>(url);
       setData(result);
       writeLocalCache(cacheKey, result);
       setError(null);
@@ -63,8 +71,9 @@ export function useOsu() {
       }
     } finally {
       setIsFetching(false);
+      setIsSearching(false);
     }
-  }, [cacheKey]);
+  }, [cacheKey, isSearch, searchUsername]);
 
   const retry = useCallback(() => {
     fetchOsuData();
@@ -72,9 +81,13 @@ export function useOsu() {
 
   useEffect(() => {
     fetchOsuData();
-    const interval = setInterval(fetchOsuData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchOsuData]);
+
+    // Only auto-refresh for default profile, not searches
+    if (!isSearch) {
+      const interval = setInterval(fetchOsuData, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [fetchOsuData, isSearch]);
 
   return {
     data,
@@ -85,6 +98,7 @@ export function useOsu() {
     retryAfter,
     isStale,
     lastUpdatedAt,
+    isSearching,
     refetch: fetchOsuData,
     retry,
   };

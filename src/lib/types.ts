@@ -580,3 +580,82 @@ export interface OsuManiaData {
   bestScores: OsuScore[];
   coverColor?: string | null;
 }
+
+// KoVaaK's Types
+
+export interface KovaaksScoreEntry {
+  score: number;
+  epoch: number;
+  scenarioName: string;
+}
+
+export interface KovaaksRankInfo {
+  icon: string;
+  name: string;
+  color: string;
+  frame: string;
+  description: string;
+  playercard_large: string;
+  playercard_small: string;
+}
+
+export interface KovaaksScenarioProgress {
+  score: number;
+  leaderboard_rank: number;
+  scenario_rank: number;
+  rank_maxes: number[];
+  leaderboard_id: number;
+}
+
+export interface KovaaksCategoryProgress {
+  benchmark_progress: number;
+  category_rank: number;
+  rank_maxes: number[];
+  scenarios: Record<string, KovaaksScenarioProgress>;
+}
+
+export interface KovaaksBenchmarkProgress {
+  benchmark_progress: number;
+  overall_rank: number;
+  categories: Record<string, KovaaksCategoryProgress>;
+  ranks: KovaaksRankInfo[];
+}
+
+export interface KovaaksUserProfile {
+  steamId: string;
+  webAppUsername: string;
+  avatarUrl?: string;
+  totalPlays: number;
+  scenarioCount: number;
+  playtimeSeconds: number;
+}
+
+export interface KovaaksSubcategoryEnergyEntry {
+  subcategoryName: string;
+  energy: number;
+  bestScenario: string;
+  score: number;
+  preciseRank: number;
+}
+
+export interface KovaaksVtEnergyResult {
+  rank: number;
+  rankName: string;
+  rankColor: string;
+  harmonicMean: number;
+  thresholds: number[];
+  subcategoryEnergies: number[];
+  energyDetails: Record<string, Record<string, number>>;
+  subcategoryEnergiesFlat: KovaaksSubcategoryEnergyEntry[];
+  expectedSubcategoryCount: number;
+  difficultyName: string;
+}
+
+export interface KovaaksData {
+  profile: KovaaksUserProfile;
+  benchmarks: KovaaksBenchmarkProgress | null;
+  allBenchmarks?: Record<string, KovaaksBenchmarkProgress | null>;
+  recentScores: KovaaksScoreEntry[];
+  vtEnergy?: Record<string, KovaaksVtEnergyResult | null>;
+  bestVtEnergy?: KovaaksVtEnergyResult | null;
+}

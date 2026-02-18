@@ -8,14 +8,19 @@ const OSU_API_BASE = 'https://osu.ppy.sh/api/v2';
 const OSU_TOKEN_URL = 'https://osu.ppy.sh/oauth/token';
 const OSU_CACHE_TTL_MS = 2 * 60 * 1000;
 const OSU_STALE_TTL_MS = 10 * 60 * 1000;
-const OSU_CACHE_KEY = 'api:osu:mania:v1';
 const OSU_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const OSU_RATE_LIMIT_MAX_REQUESTS = 45;
 
+// Search-specific rate limits (stricter to prevent API abuse)
+const OSU_SEARCH_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const OSU_SEARCH_RATE_LIMIT_MAX_REQUESTS = 15;
+
 // In-memory token cache
 let cachedToken: { access_token: string; expires_at: number } | null = null;
-let osuCache: { payload: OsuManiaData; cachedAt: number } | null = null;
-let osuInFlight: Promise<OsuManiaData> | null = null;
+
+// Per-user in-memory caches
+const userCaches = new Map<string, { payload: OsuManiaData; cachedAt: number }>();
+const userInFlight = new Map<string, Promise<OsuManiaData>>();
 
 class OsuApiError extends Error {
   constructor(
@@ -52,6 +57,10 @@ function mergeHeaders(...headerSets: Array<HeadersInit | undefined>): HeadersIni
     }
   }
   return merged;
+}
+
+function getCacheKey(username: string): string {
+  return `api:osu:mania:${username.toLowerCase()}`;
 }
 
 async function getOsuToken(): Promise<string> {
@@ -127,20 +136,19 @@ async function osuFetch<T>(endpoint: string, token: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function fetchFreshOsuData(): Promise<OsuManiaData> {
-  const playerUsername = OSU_USERNAME;
+async function fetchFreshOsuData(username: string): Promise<OsuManiaData> {
   const gameMode = 'mania';
   const token = await getOsuToken();
 
   let user: OsuUser;
   try {
     user = await osuFetch<OsuUser>(
-      `/users/${encodeURIComponent(playerUsername)}/${gameMode}?key=username`,
+      `/users/${encodeURIComponent(username)}/${gameMode}?key=username`,
       token
     );
   } catch (error) {
     if (error instanceof OsuApiError && error.status === 404) {
-      throw new OsuApiError(`Player "${playerUsername}" not found`, 404, 'NOT_FOUND');
+      throw new OsuApiError(`Player "${username}" not found`, 404, 'NOT_FOUND');
     }
     throw error;
   }
@@ -160,10 +168,17 @@ async function fetchFreshOsuData(): Promise<OsuManiaData> {
 }
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const searchUsername = searchParams.get('username');
+  const isSearch = Boolean(searchUsername);
+  const targetUsername = searchUsername || OSU_USERNAME;
+  const cacheKey = getCacheKey(targetUsername);
+
+  // Apply stricter rate limits for search requests
   const rateLimitResult = rateLimit(request, {
-    namespace: 'api:osu',
-    limit: OSU_RATE_LIMIT_MAX_REQUESTS,
-    windowMs: OSU_RATE_LIMIT_WINDOW_MS,
+    namespace: isSearch ? 'api:osu:search' : 'api:osu',
+    limit: isSearch ? OSU_SEARCH_RATE_LIMIT_MAX_REQUESTS : OSU_RATE_LIMIT_MAX_REQUESTS,
+    windowMs: isSearch ? OSU_SEARCH_RATE_LIMIT_WINDOW_MS : OSU_RATE_LIMIT_WINDOW_MS,
   });
 
   if (!rateLimitResult.ok) {
@@ -183,13 +198,16 @@ export async function GET(request: Request) {
   const now = Date.now();
   let staleKvPayload: OsuManiaData | null = null;
 
-  if (osuCache && now - osuCache.cachedAt < OSU_CACHE_TTL_MS) {
-    return NextResponse.json(osuCache.payload, {
+  // Check in-memory cache for this user
+  const memCache = userCaches.get(cacheKey);
+  if (memCache && now - memCache.cachedAt < OSU_CACHE_TTL_MS) {
+    return NextResponse.json(memCache.payload, {
       headers: mergeHeaders(getCacheHeaders('HIT'), rateLimitResult.headers),
     });
   }
 
-  const kvData = await kvGetWithStale<OsuManiaData>(OSU_CACHE_KEY, {
+  // Check Redis/KV cache
+  const kvData = await kvGetWithStale<OsuManiaData>(cacheKey, {
     freshMs: OSU_CACHE_TTL_MS,
     staleMs: OSU_STALE_TTL_MS,
   });
@@ -198,19 +216,21 @@ export async function GET(request: Request) {
     if (kvData.isStale) {
       staleKvPayload = kvData.value;
     } else {
-      osuCache = {
+      userCaches.set(cacheKey, {
         payload: kvData.value,
         cachedAt: now - kvData.ageMs,
-      };
+      });
       return NextResponse.json(kvData.value, {
         headers: mergeHeaders(getCacheHeaders('HIT_KV'), rateLimitResult.headers),
       });
     }
   }
 
-  if (osuInFlight) {
+  // Check if there's already an in-flight request for this user
+  const existingFlight = userInFlight.get(cacheKey);
+  if (existingFlight) {
     try {
-      const sharedPayload = await osuInFlight;
+      const sharedPayload = await existingFlight;
       return NextResponse.json(sharedPayload, {
         headers: mergeHeaders(getCacheHeaders('SHARED'), rateLimitResult.headers),
       });
@@ -219,25 +239,27 @@ export async function GET(request: Request) {
     }
   }
 
-  const fetchTask = fetchFreshOsuData();
-  osuInFlight = fetchTask;
+  const fetchTask = fetchFreshOsuData(targetUsername);
+  userInFlight.set(cacheKey, fetchTask);
 
   try {
     const payload = await fetchTask;
-    osuCache = { payload, cachedAt: Date.now() };
-    void kvSetWithTimestamp(OSU_CACHE_KEY, payload, OSU_CACHE_TTL_MS + OSU_STALE_TTL_MS);
+    userCaches.set(cacheKey, { payload, cachedAt: Date.now() });
+    void kvSetWithTimestamp(cacheKey, payload, OSU_CACHE_TTL_MS + OSU_STALE_TTL_MS);
 
     return NextResponse.json(payload, {
       headers: mergeHeaders(getCacheHeaders('MISS'), rateLimitResult.headers),
     });
   } catch (error) {
-    if (osuCache && now - osuCache.cachedAt < OSU_CACHE_TTL_MS + OSU_STALE_TTL_MS) {
+    // Try stale in-memory cache
+    if (memCache && now - memCache.cachedAt < OSU_CACHE_TTL_MS + OSU_STALE_TTL_MS) {
       return NextResponse.json(
-        { ...osuCache.payload, stale: true },
+        { ...memCache.payload, stale: true },
         { headers: mergeHeaders(getCacheHeaders('STALE'), rateLimitResult.headers) }
       );
     }
 
+    // Try stale KV cache
     if (staleKvPayload) {
       return NextResponse.json(
         { ...staleKvPayload, stale: true },
@@ -262,8 +284,8 @@ export async function GET(request: Request) {
       { status: 500, headers: mergeHeaders(rateLimitResult.headers) }
     );
   } finally {
-    if (osuInFlight === fetchTask) {
-      osuInFlight = null;
+    if (userInFlight.get(cacheKey) === fetchTask) {
+      userInFlight.delete(cacheKey);
     }
   }
 }

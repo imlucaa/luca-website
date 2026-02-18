@@ -1,17 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ValorantData } from '@/lib/types';
+import { KovaaksData } from '@/lib/types';
 import { ApiError, fetchJson } from '@/lib/api-client';
 import { readLocalCache, writeLocalCache } from '@/lib/local-cache';
 
-interface ValorantSearchParams {
-  name: string;
-  tag: string;
-}
-
-export function useValorant(searchParams?: ValorantSearchParams | null) {
-  const [data, setData] = useState<ValorantData | null>(null);
+export function useKovaaks(searchUsername?: string | null) {
+  const [data, setData] = useState<KovaaksData | null>(null);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -20,14 +15,12 @@ export function useValorant(searchParams?: ValorantSearchParams | null) {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  const isSearch = Boolean(searchParams);
-  const cacheKey = isSearch
-    ? `valorant:search:${searchParams!.name.toLowerCase()}:${searchParams!.tag.toLowerCase()}`
-    : 'valorant:default';
+  const isSearch = Boolean(searchUsername);
+  const cacheKey = isSearch ? `kovaaks:search:${searchUsername!.toLowerCase()}` : 'kovaaks:default';
 
   // Load from local cache on mount or when search changes
   useEffect(() => {
-    const cached = readLocalCache<ValorantData>(cacheKey);
+    const cached = readLocalCache<KovaaksData>(cacheKey);
     if (!cached) {
       setData(null);
       setLastUpdatedAt(null);
@@ -41,16 +34,23 @@ export function useValorant(searchParams?: ValorantSearchParams | null) {
     setIsFetching(false);
   }, [cacheKey]);
 
-  const fetchValorantData = useCallback(async () => {
+  const fetchKovaaksData = useCallback(async () => {
     setIsFetching(true);
     if (isSearch) setIsSearching(true);
 
     try {
-      const url = isSearch
-        ? `/api/valorant?name=${encodeURIComponent(searchParams!.name)}&tag=${encodeURIComponent(searchParams!.tag)}`
-        : '/api/valorant';
+      let url = '/api/kovaaks';
+      if (isSearch && searchUsername) {
+        // Detect if the input looks like a Steam ID (numeric, 17 digits, starts with 7656)
+        const isSteamId = /^\d{17}$/.test(searchUsername) && searchUsername.startsWith('7656');
+        if (isSteamId) {
+          url = `/api/kovaaks?steamId=${encodeURIComponent(searchUsername)}`;
+        } else {
+          url = `/api/kovaaks?username=${encodeURIComponent(searchUsername)}`;
+        }
+      }
 
-      const result = await fetchJson<ValorantData>(url);
+      const result = await fetchJson<KovaaksData>(url);
       setData(result);
       writeLocalCache(cacheKey, result);
       setError(null);
@@ -59,7 +59,7 @@ export function useValorant(searchParams?: ValorantSearchParams | null) {
       setIsStale(false);
       setLastUpdatedAt(Date.now());
     } catch (err) {
-      const cached = readLocalCache<ValorantData>(cacheKey);
+      const cached = readLocalCache<KovaaksData>(cacheKey);
 
       if (cached) {
         setData(cached.data);
@@ -80,21 +80,21 @@ export function useValorant(searchParams?: ValorantSearchParams | null) {
       setIsFetching(false);
       setIsSearching(false);
     }
-  }, [cacheKey, isSearch, searchParams]);
+  }, [cacheKey, isSearch, searchUsername]);
 
   const retry = useCallback(() => {
-    fetchValorantData();
-  }, [fetchValorantData]);
+    fetchKovaaksData();
+  }, [fetchKovaaksData]);
 
   useEffect(() => {
-    fetchValorantData();
+    fetchKovaaksData();
 
     // Only auto-refresh for default profile, not searches
     if (!isSearch) {
-      const interval = setInterval(fetchValorantData, 5 * 60 * 1000);
+      const interval = setInterval(fetchKovaaksData, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [fetchValorantData, isSearch]);
+  }, [fetchKovaaksData, isSearch]);
 
   return {
     data,
@@ -106,7 +106,7 @@ export function useValorant(searchParams?: ValorantSearchParams | null) {
     isStale,
     lastUpdatedAt,
     isSearching,
-    refetch: fetchValorantData,
+    refetch: fetchKovaaksData,
     retry,
   };
 }

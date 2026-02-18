@@ -17,6 +17,21 @@ function ValorantIcon({ className }: { className?: string }) {
   );
 }
 
+// KovaaK's crosshair icon
+function KovaaksIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <line x1="12" y1="0" x2="12" y2="4" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="12" y1="20" x2="12" y2="24" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="0" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="20" y1="12" x2="24" y2="12" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 // osu! logo (Simple Icons path)
 function OsuIcon({ className }: { className?: string }) {
   return (
@@ -33,13 +48,14 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  tone: 'default' | 'valorant' | 'osu';
+  tone: 'default' | 'valorant' | 'osu' | 'kovaaks';
 }
 
 const navItems: NavItem[] = [
   { href: '/general', icon: Home, label: 'General', tone: 'default' },
   { href: '/valorant', icon: ValorantIcon, label: 'Valorant', tone: 'valorant' },
   { href: '/osu', icon: OsuIcon, label: 'osu!', tone: 'osu' },
+  { href: '/kovaaks', icon: KovaaksIcon, label: "KovaaK's", tone: 'kovaaks' },
 ];
 
 export function Sidebar() {
