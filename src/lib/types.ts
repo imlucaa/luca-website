@@ -553,6 +553,7 @@ export interface OsuScore {
   max_combo: number;
   passed: boolean;
   perfect: boolean;
+  replay: boolean;
   statistics: OsuScoreStatistics;
   rank: string;
   created_at: string;
@@ -636,6 +637,59 @@ export interface KovaaksSubcategoryEnergyEntry {
   bestScenario: string;
   score: number;
   preciseRank: number;
+}
+
+// Twitter/X Types
+export interface TwitterUser {
+  id: string;
+  name: string;
+  username: string;
+  profile_image_url?: string;
+  banner_url?: string;
+  description?: string;
+  location?: string;
+  website?: { url: string; display_url: string };
+  public_metrics?: {
+    followers_count: number;
+    following_count: number;
+    tweet_count: number;
+    listed_count: number;
+  };
+  verified?: boolean;
+  created_at?: string;
+}
+
+export interface TwitterMedia {
+  type: 'photo' | 'video' | 'animated_gif';
+  url: string;
+  thumbnail_url?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+}
+
+export interface TwitterTweetAuthor {
+  name: string;
+  screen_name: string;
+  avatar_url: string;
+}
+
+export interface TwitterTweet {
+  id: string;
+  url: string;
+  text: string;
+  created_at: string;
+  author: TwitterTweetAuthor;
+  likes: number;
+  replies: number;
+  retweets: number;
+  views?: number;
+  media?: TwitterMedia[];
+}
+
+export interface TwitterData {
+  user: TwitterUser;
+  tweets: TwitterTweet[];
 }
 
 export interface KovaaksVtEnergyResult {

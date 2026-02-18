@@ -146,43 +146,13 @@ body {
 .topnav-link-active {
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .topnav-link-active .topnav-icon {
   opacity: 1;
-}
-
-.topnav-link-valorant.topnav-link-active {
-  color: #ffb1b8;
-  background: rgba(250, 68, 84, 0.16);
-  border-color: rgba(250, 68, 84, 0.42);
-  box-shadow: inset 0 0 0 1px rgba(250, 68, 84, 0.16);
-}
-
-.topnav-link-valorant.topnav-link-active .topnav-icon {
-  color: #fa4454;
-}
-
-.topnav-link-osu.topnav-link-active {
-  color: #ffd0e8;
-  background: rgba(255, 102, 170, 0.16);
-  border-color: rgba(255, 102, 170, 0.42);
-  box-shadow: inset 0 0 0 1px rgba(255, 102, 170, 0.16);
-}
-
-.topnav-link-osu.topnav-link-active .topnav-icon {
-  color: #ff66aa;
-}
-
-.topnav-link-kovaaks.topnav-link-active {
-  color: #fed7aa;
-  background: rgba(249, 115, 22, 0.16);
-  border-color: rgba(249, 115, 22, 0.42);
-  box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.16);
-}
-
-.topnav-link-kovaaks.topnav-link-active .topnav-icon {
-  color: #f97316;
+  color: #fff;
 }
 
 .topnav-right {
@@ -2610,8 +2580,8 @@ h1, h2, h3 {
   height: 64px;
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(249, 115, 22, 0.1);
-  border: 2px solid rgba(249, 115, 22, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2625,7 +2595,8 @@ h1, h2, h3 {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
   letter-spacing: 0.02em;
 }
 
@@ -2649,7 +2620,7 @@ h1, h2, h3 {
 
 .kvk-stat-card:hover {
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(249, 115, 22, 0.2);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .kvk-stat-value {
@@ -2722,7 +2693,6 @@ h1, h2, h3 {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid;
 }
 
 .kvk-benchmark-completed {
@@ -2746,7 +2716,6 @@ h1, h2, h3 {
 .kvk-benchmark-volts-value {
   font-size: 22px;
   font-weight: 700;
-  color: #fff;
   line-height: 1;
 }
 
@@ -2759,7 +2728,7 @@ h1, h2, h3 {
 
 /* Voltaic-style Benchmark Table */
 .kvk-benchmark-content {
-  padding: 0 10px 10px;
+  padding: 0 12px 12px;
   overflow-x: auto;
 }
 
@@ -2778,10 +2747,10 @@ h1, h2, h3 {
 /* Table header */
 .kvk-th {
   padding: 4px 4px;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 8px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--text-muted, #6b7280);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   white-space: nowrap;
@@ -2790,12 +2759,12 @@ h1, h2, h3 {
 
 .kvk-th-cat {
   text-align: center;
-  width: 28px;
+  width: 18px;
 }
 
 .kvk-th-subcat {
   text-align: center;
-  width: 28px;
+  width: 18px;
 }
 
 .kvk-th-scenario {
@@ -2804,18 +2773,18 @@ h1, h2, h3 {
 
 .kvk-th-score {
   text-align: right;
-  width: 52px;
+  width: 44px;
 }
 
 .kvk-th-rank {
   width: 52px;
   font-weight: 700;
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .kvk-th-energy {
-  width: 44px;
-  color: #f97316;
+  width: 36px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* Table rows */
@@ -2824,40 +2793,39 @@ h1, h2, h3 {
 }
 
 .kvk-tr:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .kvk-tr-sub-first > .kvk-td {
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Table cells */
 .kvk-td {
-  padding: 3px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  padding: 2px 3px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   vertical-align: middle;
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 /* Category cell - vertical text spanning rows */
 .kvk-td-cat {
   vertical-align: middle;
   text-align: center;
-  width: 28px;
-  max-width: 28px;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(255, 255, 255, 0.01);
-  padding: 2px 0;
+  width: 18px;
+  max-width: 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
+  padding: 0;
 }
 
 .kvk-cat-label {
   display: block;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.4);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   writing-mode: vertical-lr;
   text-orientation: mixed;
   transform: rotate(180deg);
@@ -2868,20 +2836,19 @@ h1, h2, h3 {
 .kvk-td-subcat {
   vertical-align: middle;
   text-align: center;
-  width: 28px;
-  max-width: 28px;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(255, 255, 255, 0.01);
-  padding: 2px 0;
+  width: 18px;
+  max-width: 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
+  padding: 0;
 }
 
 .kvk-subcat-label {
   display: block;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.4);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   writing-mode: vertical-lr;
   text-orientation: mixed;
   transform: rotate(180deg);
@@ -2890,12 +2857,12 @@ h1, h2, h3 {
 
 /* Scenario cell */
 .kvk-td-scenario {
-  font-size: 11px;
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.85);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 200px;
 }
 
 /* Score cell */
@@ -2903,6 +2870,7 @@ h1, h2, h3 {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
+  width: 44px;
 }
 
 /* Rank threshold cells */
@@ -2910,57 +2878,26 @@ h1, h2, h3 {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.25);
-  padding: 3px 2px;
+  padding: 2px 3px;
+  border-radius: 2px;
+  border-left: 2px solid transparent;
 }
 
 .kvk-td-rank-achieved {
   font-weight: 600;
   border-radius: 2px;
-  border: 1px solid currentColor;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /* Energy cell - spans subcategory rows */
 .kvk-td-energy {
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Harmonic Mean Summary */
-.kvk-hm-summary {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 8px 4px 2px;
-  margin-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.kvk-hm-label {
-  font-size: 10px;
-  color: var(--text-muted, #6b7280);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-}
-
-.kvk-hm-value {
-  font-size: 16px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.kvk-hm-rank {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 3px;
-  border: 1px solid;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  width: 36px;
 }
 
 /* Responsive */
@@ -2978,25 +2915,32 @@ h1, h2, h3 {
   }
 
   .kvk-table {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .kvk-td-scenario {
-    font-size: 10px;
-    max-width: 120px;
+    font-size: 9px;
+    max-width: 100px;
   }
 
   .kvk-td-rank {
-    font-size: 9px;
-    padding: 2px 1px;
+    font-size: 8px;
+    padding: 1px 1px;
   }
 
   .kvk-td-energy {
-    font-size: 11px;
+    font-size: 9px;
   }
 
-  .kvk-cat-label {
-    font-size: 8px;
+  .kvk-cat-label,
+  .kvk-subcat-label {
+    font-size: 6px;
+  }
+
+  .kvk-td-cat,
+  .kvk-td-subcat {
+    width: 14px;
+    max-width: 14px;
   }
 }
 
@@ -3010,12 +2954,12 @@ h1, h2, h3 {
 }
 
 .kovaaks-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(249, 115, 22, 0.2);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
 
 .kovaaks-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(249, 115, 22, 0.4);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* ============================================

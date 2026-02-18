@@ -58,7 +58,7 @@ export function OsuTopPlays({ scores }: OsuTopPlaysProps) {
           const rankLabel = RANK_LABELS[score.rank] || score.rank;
           const hasMisses = score.statistics.count_miss > 0;
           const coverUrl = score.beatmapset?.covers?.['list@2x'] || score.beatmapset?.covers?.list || '';
-          const beatmapUrl = score.beatmap?.url || `https://osu.ppy.sh/beatmapsets/${score.beatmapset?.id}`;
+          const scoreUrl = `https://osu.ppy.sh/scores/${score.id}`;
           const weightPercentage = score.weight?.percentage;
           const weightedPp = score.weight?.pp;
 
@@ -66,7 +66,7 @@ export function OsuTopPlays({ scores }: OsuTopPlaysProps) {
             <div
               key={`${score.id || index}`}
               className="osu-score-row osu-top-play-row"
-              onClick={() => window.open(beatmapUrl, '_blank')}
+              onClick={() => window.open(scoreUrl, '_blank')}
             >
               {/* Rank Number */}
               <div className="osu-top-play-number">#{index + 1}</div>

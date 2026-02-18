@@ -13,7 +13,7 @@ const KOVAAKS_DEFAULT_STEAM_ID = process.env.KOVAAKS_STEAM_ID || '';
 const VOLTAIC_S5_BENCHMARKS = {
   novice: { id: '459', label: 'Novice' },
   intermediate: { id: '458', label: 'Intermediate' },
-  advanced: { id: '427', label: 'Advanced' },
+  advanced: { id: '460', label: 'Advanced' },
   elite: { id: '475', label: 'Elite' },
 };
 

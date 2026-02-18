@@ -297,7 +297,7 @@ async function fetchFreshValorantData(playerName: string, playerTag: string): Pr
       `${HENRIK_API_BASE}/valorant/v3/matches/${playerRegion}/${encodeURIComponent(playerName)}/${encodeURIComponent(playerTag)}?size=15`,
       {
         headers,
-        next: { revalidate: 300 },
+        cache: 'no-store',
       }
     );
 

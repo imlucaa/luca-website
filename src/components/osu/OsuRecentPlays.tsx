@@ -63,13 +63,13 @@ export function OsuRecentPlays({ scores }: OsuRecentPlaysProps) {
             : '';
 
           const coverUrl = score.beatmapset?.covers?.['list@2x'] || score.beatmapset?.covers?.list || '';
-          const beatmapUrl = score.beatmap?.url || `https://osu.ppy.sh/beatmapsets/${score.beatmapset?.id}`;
+          const scoreUrl = `https://osu.ppy.sh/scores/${score.id}`;
 
           return (
             <div
               key={`${score.id || index}-${score.created_at}`}
               className={`osu-score-row ${!score.passed ? 'osu-score-failed' : ''}`}
-              onClick={() => window.open(beatmapUrl, '_blank')}
+              onClick={() => window.open(scoreUrl, '_blank')}
             >
               {/* Beatmap Cover */}
               <div className="osu-score-cover">

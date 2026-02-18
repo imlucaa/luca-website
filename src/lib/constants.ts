@@ -15,6 +15,10 @@ export const OSU_MODE = 'mania';
 // KovaaK's Configuration
 export const KOVAAKS_STEAM_ID = process.env.KOVAAKS_STEAM_ID || '76561199537922693';
 
+// Twitter/X Configuration
+export const TWITTER_BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN || '';
+export const TWITTER_USERNAME = process.env.TWITTER_USERNAME || 'osseds';
+
 // Status Colors
 export const STATUS_COLORS = {
   online: '#22c55e',

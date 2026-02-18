@@ -32,6 +32,15 @@ function KovaaksIcon({ className }: { className?: string }) {
   );
 }
 
+// Twitter/X icon
+function TwitterIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
 // osu! logo (Simple Icons path)
 function OsuIcon({ className }: { className?: string }) {
   return (
@@ -48,7 +57,7 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  tone: 'default' | 'valorant' | 'osu' | 'kovaaks';
+  tone: 'default' | 'valorant' | 'osu' | 'kovaaks' | 'twitter';
 }
 
 const navItems: NavItem[] = [
@@ -56,6 +65,7 @@ const navItems: NavItem[] = [
   { href: '/valorant', icon: ValorantIcon, label: 'Valorant', tone: 'valorant' },
   { href: '/osu', icon: OsuIcon, label: 'osu!', tone: 'osu' },
   { href: '/kovaaks', icon: KovaaksIcon, label: "KovaaK's", tone: 'kovaaks' },
+  { href: '/twitter', icon: TwitterIcon, label: 'Twitter', tone: 'twitter' },
 ];
 
 export function Sidebar() {

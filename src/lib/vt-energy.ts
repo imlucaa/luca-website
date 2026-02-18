@@ -245,7 +245,7 @@ const VT_S5_DIFFICULTIES: Record<string, DifficultyConfig> = {
 const BENCHMARK_ID_TO_DIFFICULTY: Record<string, string> = {
   '459': 'novice',
   '458': 'intermediate',
-  '427': 'advanced',
+  '460': 'advanced',
   '475': 'elite (unofficial)',
 };
 
@@ -560,9 +560,10 @@ function calculateVtEnergyRankInternal(apiData: ApiData, difficultyConfig: Diffi
   );
 
   const validForHarmonic = subcategoryEnergies.filter((e) => e > 0);
+  // Calculate harmonic mean even with partial completion (use valid subcategories only)
   const harmonicMean =
-    subcategoryEnergies.length === expectedSubcategoryCount
-      ? Math.round(calculateHarmonicMean(validForHarmonic, expectedSubcategoryCount) * 10) / 10
+    validForHarmonic.length > 0
+      ? Math.round(calculateHarmonicMean(validForHarmonic, validForHarmonic.length) * 10) / 10
       : 0;
 
   let rank = 0;
@@ -639,7 +640,7 @@ export function calculateVtEnergyForBenchmarkId(
 
 /**
  * Get the best VT-Energy result across all tiers.
- * Returns the tier with the highest harmonic mean energy.
+ * Prefers ranked results over unranked; among same-ranked-status, picks highest energy.
  */
 export function getBestVtEnergyResult(
   allResults: Record<string, VtEnergyResult | null>
@@ -648,7 +649,17 @@ export function getBestVtEnergyResult(
 
   for (const result of Object.values(allResults)) {
     if (!result) continue;
-    if (!best || result.harmonicMean > best.harmonicMean) {
+    if (!best) {
+      best = result;
+      continue;
+    }
+    const bestIsRanked = best.rank > 0;
+    const resultIsRanked = result.rank > 0;
+    // Prefer ranked over unranked
+    if (resultIsRanked && !bestIsRanked) {
+      best = result;
+    } else if (resultIsRanked === bestIsRanked && result.harmonicMean > best.harmonicMean) {
+      // Among same status (both ranked or both unranked), pick higher energy
       best = result;
     }
   }

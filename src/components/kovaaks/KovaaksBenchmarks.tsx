@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Crosshair, Zap } from 'lucide-react';
 import type { KovaaksBenchmarkProgress, KovaaksVtEnergyResult } from '@/lib/types';
 
 // Rank colors matching Voltaic benchmark tiers
@@ -24,6 +23,26 @@ const RANK_COLORS: Record<string, string> = {
   'Solara': '#FCFFA0',
 };
 
+// Voltaic S5 category colors
+const CATEGORY_COLORS: Record<string, string> = {
+  'Clicking': '#CC0000',
+  'Tracking': '#1155CC',
+  'Switching': '#351C75',
+};
+
+// Voltaic S5 subcategory colors
+const SUBCATEGORY_COLORS: Record<string, string> = {
+  'Dynamic': '#F1C232',
+  'Static': '#E06666',
+  'Linear': '#FF8A45',
+  'Precise': '#45818E',
+  'Reactive': '#3C78D8',
+  'Control': '#42A5FF',
+  'Speed': '#A64D79',
+  'Evasive': '#674EA7',
+  'Stability': '#B4A3FF',
+};
+
 interface KovaaksBenchmarksProps {
   benchmarks: KovaaksBenchmarkProgress | null;
   allBenchmarks?: Record<string, KovaaksBenchmarkProgress | null>;
@@ -33,7 +52,6 @@ interface KovaaksBenchmarksProps {
 /**
  * The KoVaaK's API returns scores multiplied by 100.
  * Convert to the real display value (divide by 100), rounded to integer.
- * The game displays whole numbers, so we round.
  */
 function convertApiScore(apiScore: number): number {
   return Math.round(apiScore / 100);
@@ -46,10 +64,18 @@ function formatScore(score: number): string {
   return String(Math.round(score));
 }
 
-function getScenarioRankColor(scenarioRank: number, ranks: KovaaksBenchmarkProgress['ranks']): string {
-  if (scenarioRank < 0 || scenarioRank >= ranks.length) return RANK_COLORS['Unranked'];
-  const rankName = ranks[scenarioRank]?.name || 'Unranked';
-  return ranks[scenarioRank]?.color || RANK_COLORS[rankName] || RANK_COLORS['Unranked'];
+function getRankColor(rankIdx: number, ranks: KovaaksBenchmarkProgress['ranks']): string {
+  if (rankIdx < 0 || rankIdx >= ranks.length) return RANK_COLORS['Unranked'];
+  const rank = ranks[rankIdx];
+  const name = rank?.name || 'Unranked';
+  // Prefer our RANK_COLORS map (Voltaic metadata) over API color
+  // Try exact match first, then title-case match
+  const titleCase = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  return RANK_COLORS[name] || RANK_COLORS[titleCase] || rank?.color || RANK_COLORS['Unranked'];
+}
+
+function getEnergyRankColor(energyRankName: string): string {
+  return RANK_COLORS[energyRankName] || RANK_COLORS['Unranked'];
 }
 
 // Maps API category names to their subcategory names (in order)
@@ -80,6 +106,27 @@ function buildSubcategoryEnergyMap(tierEnergy: KovaaksVtEnergyResult | null): Su
   return map;
 }
 
+/**
+ * Determine which rank a scenario's score has achieved.
+ * Returns the highest rankArrayIdx where score >= threshold, or -1 if none.
+ * Uses rankMaxesIdx to look up the correct threshold from rank_maxes.
+ */
+function getAchievedRankIdx(
+  scenario: { score: number; rank_maxes: number[] },
+  displayRanks: Array<{ rankArrayIdx: number; rankMaxesIdx: number }>
+): number {
+  if (scenario.score <= 0) return -1;
+  const displayScore = convertApiScore(scenario.score);
+  let highest = -1;
+  for (const { rankArrayIdx, rankMaxesIdx } of displayRanks) {
+    const threshold = scenario.rank_maxes[rankMaxesIdx] ?? 0;
+    if (threshold > 0 && displayScore >= threshold) {
+      highest = rankArrayIdx;
+    }
+  }
+  return highest;
+}
+
 export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: KovaaksBenchmarksProps) {
   const [expandedTier, setExpandedTier] = useState<string | null>(() => {
     if (allBenchmarks) {
@@ -104,7 +151,6 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
     return (
       <div className="bento-card col-span-4 !p-5">
         <div className="flex items-center gap-2 mb-4">
-          <Crosshair size={20} className="text-orange-400" />
           <h2 className="text-lg font-semibold">Benchmarks</h2>
         </div>
         <div className="text-center py-8">
@@ -126,7 +172,6 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
   return (
     <div className="bento-card col-span-4 !p-5">
       <div className="flex items-center gap-2 mb-4">
-        <Crosshair size={20} className="text-orange-400" />
         <h2 className="text-lg font-semibold">Benchmarks</h2>
       </div>
 
@@ -137,7 +182,7 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
 
           const tierEnergy = vtEnergy?.[tier] ?? null;
           const energyRankName = tierEnergy?.rankName || 'Unranked';
-          const energyRankColor = tierEnergy?.rankColor || '#6b7280';
+          const energyRankColor = getEnergyRankColor(energyRankName);
           const harmonicMean = tierEnergy?.harmonicMean ?? 0;
           const subcategoryEnergyMap = buildSubcategoryEnergyMap(tierEnergy);
 
@@ -151,15 +196,20 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
           }
 
           const categoryNames = Object.keys(data.categories);
-          // Filter out "No Rank" / "Unranked" from the displayed ranks
-          const filteredRankIndices: number[] = [];
+          // Build visible ranks: pair each actual rank with its rank_maxes index.
+          // The ranks array may start with "No Rank"/"Unranked" which has no
+          // corresponding entry in scenario.rank_maxes. rank_maxes is 0-indexed
+          // for actual ranks only (Iron=0, Bronze=1, Silver=2, Gold=3, etc.).
+          const visibleRanks: Array<{ rankArrayIdx: number; rankMaxesIdx: number }> = [];
+          let rankMaxesCounter = 0;
           for (let i = 0; i < data.ranks.length; i++) {
             const name = data.ranks[i]?.name?.toLowerCase() || '';
             if (name === 'no rank' || name === 'unranked') continue;
-            filteredRankIndices.push(i);
+            visibleRanks.push({ rankArrayIdx: i, rankMaxesIdx: rankMaxesCounter });
+            rankMaxesCounter++;
           }
-          // Limit to 4 visible rank columns
-          const visibleRankIndices = filteredRankIndices.slice(0, 4);
+          // Limit visible rank columns (6 for elite, 4 for others)
+          const displayRanks = visibleRanks.slice(0, 6);
 
           return (
             <div key={tier} className="kvk-benchmark-tier">
@@ -176,7 +226,11 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                     {energyRankName !== 'Unranked' && (
                       <span
                         className="kvk-benchmark-rank-badge"
-                        style={{ color: energyRankColor, borderColor: `${energyRankColor}40` }}
+                        style={{
+                          color: energyRankColor,
+                          borderColor: energyRankColor + '40',
+                          background: energyRankColor + '15',
+                        }}
                       >
                         {energyRankName}
                       </span>
@@ -188,13 +242,14 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                 </div>
                 <div className="kvk-benchmark-header-right">
                   <div className="kvk-benchmark-volts">
-                    <Zap size={12} style={{ color: energyRankColor }} />
-                    <span className="kvk-benchmark-volts-value" style={{ color: energyRankColor }}>
+                    <span
+                      className="kvk-benchmark-volts-value"
+                      style={{ color: energyRankName !== 'Unranked' ? energyRankColor : '#fff' }}
+                    >
                       {harmonicMean > 0 ? harmonicMean.toFixed(1) : '—'}
                     </span>
                     <span className="kvk-benchmark-volts-label">energy</span>
                   </div>
-                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </div>
               </button>
 
@@ -209,12 +264,12 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                           <th className="kvk-th kvk-th-subcat">Subcategory</th>
                           <th className="kvk-th kvk-th-scenario">Scenario</th>
                           <th className="kvk-th kvk-th-score">Score</th>
-                          {visibleRankIndices.map((rankIdx) => {
-                            const rank = data.ranks[rankIdx];
-                            const rankColor = rank?.color || RANK_COLORS[rank?.name] || '#6b7280';
+                          {displayRanks.map(({ rankArrayIdx }) => {
+                            const rank = data.ranks[rankArrayIdx];
+                            const rankColor = rank?.color || RANK_COLORS[rank?.name || 'Unranked'] || '#6b7280';
                             return (
                               <th
-                                key={rankIdx}
+                                key={rankArrayIdx}
                                 className="kvk-th kvk-th-rank"
                                 style={{ color: rankColor }}
                               >
@@ -230,6 +285,7 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                           const category = data.categories[categoryName];
                           const scenarioEntries = Object.entries(category.scenarios);
                           const subcategoryNames = CATEGORY_SUBCATEGORIES[categoryName] || [];
+                          const categoryColor = CATEGORY_COLORS[categoryName] || '#6b7280';
 
                           // Build subcategory groups
                           const groups: Array<{
@@ -265,14 +321,18 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                           let isFirstCategoryRow = true;
 
                           return groups.map((group, groupIdx) => {
+                            const subcategoryColor = SUBCATEGORY_COLORS[group.subcategoryName] || '#6b7280';
+
                             return group.scenarios.map(([scenarioName, scenario], sIdx) => {
                               const isCompleted = scenario.score > 0;
-                              // API scores are ×100, convert for display
                               const displayScore = convertApiScore(scenario.score);
-                              const scenarioRankColor = getScenarioRankColor(scenario.scenario_rank, data.ranks);
                               const showCategory = isFirstCategoryRow;
                               const showSubcategory = sIdx === 0;
                               const showEnergy = sIdx === 0;
+                              const achievedRankIdx = getAchievedRankIdx(scenario, displayRanks);
+                              const achievedRankColor = achievedRankIdx >= 0
+                                ? getRankColor(achievedRankIdx, data.ranks)
+                                : undefined;
 
                               if (isFirstCategoryRow) isFirstCategoryRow = false;
 
@@ -281,23 +341,35 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                                   key={`${categoryName}-${groupIdx}-${sIdx}`}
                                   className={`kvk-tr${showSubcategory ? ' kvk-tr-sub-first' : ''}`}
                                 >
-                                  {/* Category cell - spans all rows in category */}
+                                  {/* Category cell - colored */}
                                   {showCategory && (
                                     <td
                                       className="kvk-td kvk-td-cat"
                                       rowSpan={totalCategoryRows}
+                                      style={{ borderRightColor: categoryColor + '40' }}
                                     >
-                                      <span className="kvk-cat-label">{categoryName}</span>
+                                      <span
+                                        className="kvk-cat-label"
+                                        style={{ color: categoryColor }}
+                                      >
+                                        {categoryName}
+                                      </span>
                                     </td>
                                   )}
 
-                                  {/* Subcategory cell - spans all rows in subcategory */}
+                                  {/* Subcategory cell - colored */}
                                   {showSubcategory && (
                                     <td
                                       className="kvk-td kvk-td-subcat"
                                       rowSpan={group.scenarios.length}
+                                      style={{ borderRightColor: subcategoryColor + '30' }}
                                     >
-                                      <span className="kvk-subcat-label">{group.subcategoryName}</span>
+                                      <span
+                                        className="kvk-subcat-label"
+                                        style={{ color: subcategoryColor }}
+                                      >
+                                        {group.subcategoryName}
+                                      </span>
                                     </td>
                                   )}
 
@@ -306,44 +378,50 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                                     {scenarioName}
                                   </td>
 
-                                  {/* Score (converted from API ×100 format) */}
+                                  {/* Score - colored by achieved rank with diagonal fill */}
                                   <td
-                                    className="kvk-td kvk-td-score"
+                                    className={`kvk-td kvk-td-score${isCompleted && achievedRankColor ? ' kvk-td-rank-achieved' : ''}`}
                                     style={{
-                                      color: isCompleted ? scenarioRankColor : '#4b5563',
+                                      color: isCompleted ? '#fff' : '#4b5563',
                                       fontWeight: isCompleted ? 600 : 400,
+                                      ...(isCompleted && achievedRankColor ? {
+                                        background: `linear-gradient(135deg, ${achievedRankColor}90 0%, ${achievedRankColor}50 40%, ${achievedRankColor}20 100%)`,
+                                        borderLeft: `2px solid ${achievedRankColor}cc`,
+                                      } : {}),
                                     }}
                                   >
-                                    {isCompleted ? formatScore(displayScore) : '0'}
+                                    {isCompleted ? formatScore(displayScore) : '—'}
                                   </td>
 
-                                  {/* Rank thresholds (skip "No Rank") */}
-                                  {visibleRankIndices.map((rankIdx) => {
-                                    const threshold = scenario.rank_maxes[rankIdx] ?? 0;
-                                    const isAchieved = isCompleted && displayScore >= threshold;
-                                    const rankColor = data.ranks[rankIdx]?.color || RANK_COLORS[data.ranks[rankIdx]?.name] || '#6b7280';
+                                  {/* Rank thresholds with diagonal gradient */}
+                                  {displayRanks.map(({ rankArrayIdx, rankMaxesIdx }) => {
+                                    const threshold = scenario.rank_maxes[rankMaxesIdx] ?? 0;
+                                    const isAchieved = isCompleted && threshold > 0 && displayScore >= threshold;
+                                    const rankColor = getRankColor(rankArrayIdx, data.ranks);
                                     return (
                                       <td
-                                        key={rankIdx}
+                                        key={rankArrayIdx}
                                         className={`kvk-td kvk-td-rank${isAchieved ? ' kvk-td-rank-achieved' : ''}`}
-                                        style={isAchieved ? {
-                                          color: rankColor,
-                                          background: `linear-gradient(135deg, ${rankColor}30 25%, transparent 25%, transparent 50%, ${rankColor}30 50%, ${rankColor}30 75%, transparent 75%)`,
-                                          backgroundSize: '6px 6px',
-                                        } : undefined}
+                                        style={{
+                                          background: isAchieved
+                                            ? `linear-gradient(135deg, ${rankColor}90 0%, ${rankColor}50 40%, ${rankColor}20 100%)`
+                                            : `linear-gradient(135deg, ${rankColor}18 0%, ${rankColor}08 60%, transparent 100%)`,
+                                          color: isAchieved ? '#fff' : rankColor + '55',
+                                          borderLeft: `2px solid ${isAchieved ? rankColor + 'cc' : rankColor + '18'}`,
+                                        }}
                                       >
                                         {formatScore(threshold)}
                                       </td>
                                     );
                                   })}
 
-                                  {/* Energy - spans subcategory rows */}
+                                  {/* Energy */}
                                   {showEnergy && (
                                     <td
                                       className="kvk-td kvk-td-energy"
                                       rowSpan={group.scenarios.length}
                                       style={{
-                                        color: group.energy > 0 ? energyRankColor : '#4b5563',
+                                        color: group.energy > 0 ? '#e5e7eb' : '#4b5563',
                                       }}
                                     >
                                       {group.energy > 0 ? group.energy : '—'}
@@ -358,23 +436,6 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                     </table>
                   </div>
 
-                  {/* Harmonic Mean Summary */}
-                  {tierEnergy && (
-                    <div className="kvk-hm-summary">
-                      <span className="kvk-hm-label">Harmonic Mean</span>
-                      <span className="kvk-hm-value" style={{ color: energyRankColor }}>
-                        {harmonicMean > 0 ? harmonicMean.toFixed(1) : '—'}
-                      </span>
-                      {energyRankName !== 'Unranked' && (
-                        <span
-                          className="kvk-hm-rank"
-                          style={{ color: energyRankColor, borderColor: `${energyRankColor}50` }}
-                        >
-                          {energyRankName}
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
