@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/server/rate-limit';
 import { kvGetWithStale, kvSetWithTimestamp } from '@/lib/server/kv-cache';
 import type { TwitterData, TwitterUser, TwitterTweet, TwitterMedia } from '@/lib/types';
-import { TWITTER_USERNAME } from '@/lib/constants';
+import { TWITTER_USERNAME, TWITTER_BEARER_TOKEN } from '@/lib/constants';
 
 const TWITTER_DEFAULT_USERNAME = TWITTER_USERNAME;
 
@@ -263,6 +263,111 @@ async function fetchTweetIds(username: string, limit = 5): Promise<string[]> {
   return [];
 }
 
+/**
+ * Method 3: Fetch tweets directly from Twitter API v2 using Bearer Token.
+ * Falls back to this when Nitter instances are all down.
+ */
+async function fetchTweetsFromTwitterApi(username: string, limit = 5): Promise<TwitterTweet[]> {
+  if (!TWITTER_BEARER_TOKEN) {
+    console.log('[Twitter] No bearer token available for Twitter API v2');
+    return [];
+  }
+
+  try {
+    // First get user ID from username
+    const userUrl = `https://api.twitter.com/2/users/by/username/${encodeURIComponent(username)}`;
+    console.log(`[Twitter] Fetching user ID from Twitter API v2 for @${username}`);
+    const userResponse = await fetch(userUrl, {
+      headers: {
+        'Authorization': `Bearer ${TWITTER_BEARER_TOKEN}`,
+      },
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+
+    if (!userResponse.ok) {
+      console.log(`[Twitter] Twitter API v2 user lookup failed: ${userResponse.status}`);
+      return [];
+    }
+
+    const userData = await userResponse.json();
+    const userId = userData.data?.id;
+    if (!userId) {
+      console.log('[Twitter] Could not get user ID from Twitter API v2');
+      return [];
+    }
+
+    // Fetch recent tweets
+    const tweetsUrl = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${Math.min(limit, 100)}&tweet.fields=created_at,public_metrics,text,attachments&expansions=attachments.media_keys&media.fields=type,url,preview_image_url,width,height,duration_ms`;
+    console.log(`[Twitter] Fetching tweets from Twitter API v2 for user ${userId}`);
+    const tweetsResponse = await fetch(tweetsUrl, {
+      headers: {
+        'Authorization': `Bearer ${TWITTER_BEARER_TOKEN}`,
+      },
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+
+    if (!tweetsResponse.ok) {
+      console.log(`[Twitter] Twitter API v2 tweets fetch failed: ${tweetsResponse.status}`);
+      return [];
+    }
+
+    const tweetsData = await tweetsResponse.json();
+    const rawTweets = tweetsData.data || [];
+    const mediaMap = new Map<string, { type: string; url?: string; preview_image_url?: string; width?: number; height?: number; duration_ms?: number }>();
+
+    // Build media map from includes
+    if (tweetsData.includes?.media) {
+      for (const m of tweetsData.includes.media) {
+        mediaMap.set(m.media_key, m);
+      }
+    }
+
+    const tweets: TwitterTweet[] = rawTweets.slice(0, limit).map((t: { id: string; text: string; created_at?: string; public_metrics?: { like_count?: number; reply_count?: number; retweet_count?: number; impression_count?: number }; attachments?: { media_keys?: string[] } }) => {
+      const media: TwitterMedia[] = [];
+      if (t.attachments?.media_keys) {
+        for (const key of t.attachments.media_keys) {
+          const m = mediaMap.get(key);
+          if (m) {
+            media.push({
+              type: m.type === 'animated_gif' ? 'animated_gif' : m.type === 'video' ? 'video' : 'photo',
+              url: m.url || m.preview_image_url || '',
+              thumbnail_url: m.preview_image_url,
+              width: m.width,
+              height: m.height,
+              duration: m.duration_ms ? m.duration_ms / 1000 : undefined,
+            });
+          }
+        }
+      }
+
+      return {
+        id: t.id,
+        url: `https://x.com/${username}/status/${t.id}`,
+        text: t.text,
+        created_at: t.created_at || new Date().toISOString(),
+        author: {
+          name: username,
+          screen_name: username,
+          avatar_url: '',
+        },
+        likes: t.public_metrics?.like_count || 0,
+        replies: t.public_metrics?.reply_count || 0,
+        retweets: t.public_metrics?.retweet_count || 0,
+        views: t.public_metrics?.impression_count,
+        media: media.length > 0 ? media : undefined,
+      };
+    });
+
+    console.log(`[Twitter] Got ${tweets.length} tweets from Twitter API v2`);
+    return tweets;
+  } catch (err) {
+    console.log('[Twitter] Twitter API v2 error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
 // ─── FxTwitter Tweet Fetching ────────────────────────────────────────────────
 
 /**
@@ -366,13 +471,32 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     return { user, tweets: [] };
   }
 
-  // Fetch tweet IDs from Nitter (RSS + HTML fallback) - latest 5 posts
+  // Method 1: Fetch tweet IDs from Nitter (RSS + HTML fallback) - latest 5 posts
   const tweetIds = await fetchTweetIds(username, 5);
 
-  // Fetch full tweet data for each ID
+  // Fetch full tweet data for each ID via FxTwitter
   let tweets: TwitterTweet[] = [];
   if (tweetIds.length > 0) {
     tweets = await fetchTweets(username, tweetIds);
+  }
+
+  // Method 2: If Nitter failed, try Twitter API v2 with bearer token
+  if (tweets.length === 0) {
+    console.log(`[Twitter] Nitter failed, trying Twitter API v2 for @${username}`);
+    tweets = await fetchTweetsFromTwitterApi(username, 5);
+
+    // Enrich author info from the profile we already fetched
+    if (tweets.length > 0) {
+      tweets = tweets.map(t => ({
+        ...t,
+        author: {
+          ...t.author,
+          name: user.name || t.author.name,
+          screen_name: user.username || t.author.screen_name,
+          avatar_url: user.profile_image_url || t.author.avatar_url,
+        },
+      }));
+    }
   }
 
   return { user, tweets };

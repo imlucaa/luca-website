@@ -2814,23 +2814,89 @@ h1, h2, h3 {
 @media (max-width: 768px) {
   .osu-score-row {
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
+    padding: 10px;
+    position: relative;
+  }
+
+  .osu-score-cover {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+  }
+
+  .osu-score-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .osu-score-rank {
+    font-size: 1.1rem;
+    width: 30px;
+    position: absolute;
+    top: 10px;
+    right: 10px;
   }
 
   .osu-score-stats {
     flex-direction: row;
-    gap: 8px;
+    gap: 10px;
     min-width: auto;
+    width: 100%;
+    align-items: center;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .osu-score-meta {
     flex-direction: row;
     gap: 8px;
     min-width: auto;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .osu-score-accuracy {
+    font-size: 0.75rem;
+  }
+
+  .osu-score-combo {
+    font-size: 0.7rem;
+  }
+
+  .osu-score-misses {
+    font-size: 0.65rem;
+  }
+
+  .osu-score-pp {
+    font-size: 0.8rem;
+  }
+
+  .osu-score-time {
+    font-size: 0.6rem;
+  }
+
+  .osu-score-title {
+    font-size: 0.8rem;
+    padding-right: 35px;
+  }
+
+  .osu-score-artist {
+    font-size: 0.7rem;
+    padding-right: 35px;
+  }
+
+  .osu-score-stars {
+    font-size: 0.625rem;
   }
 
   .osu-top-play-number {
     width: 20px;
+    font-size: 0.75rem;
+  }
+
+  .osu-top-play-row {
+    padding-left: 4px;
   }
 }
 
