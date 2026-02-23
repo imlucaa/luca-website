@@ -41,7 +41,7 @@ function getCacheHeaders(cacheStatus: 'HIT' | 'MISS' | 'STALE' | 'HIT_KV'): Head
 }
 
 function getCacheKey(username: string): string {
-  return `api:twitter:v7:${username.toLowerCase()}`;
+  return `api:twitter:v8:${username.toLowerCase()}`;
 }
 
 // ─── FxTwitter API ───────────────────────────────────────────────────────────
@@ -528,44 +528,50 @@ export async function GET(request: Request) {
     const username = searchParams.get('username') || TWITTER_DEFAULT_USERNAME;
     const cacheKey = getCacheKey(username);
 
-    // Check in-memory cache
+    // Check in-memory cache (skip if cached data has empty tweets)
     const memCache = userCaches.get(username.toLowerCase());
     if (memCache) {
       const age = Date.now() - memCache.cachedAt;
-      if (age < TWITTER_CACHE_TTL_MS) {
+      const hasContent = memCache.payload.tweets && memCache.payload.tweets.length > 0;
+      if (age < TWITTER_CACHE_TTL_MS && hasContent) {
         return NextResponse.json(memCache.payload, {
           headers: { ...rl.headers, ...getCacheHeaders('HIT') },
         });
       }
     }
 
-    // Check KV cache
+    // Check KV cache (skip if cached data has empty tweets)
     const kvResult = await kvGetWithStale<TwitterData>(cacheKey, {
       freshMs: TWITTER_CACHE_TTL_MS,
       staleMs: TWITTER_STALE_TTL_MS,
     });
 
     if (kvResult && !kvResult.isStale) {
-      userCaches.set(username.toLowerCase(), { payload: kvResult.value, cachedAt: Date.now() });
-      return NextResponse.json(kvResult.value, {
-        headers: { ...rl.headers, ...getCacheHeaders('HIT_KV') },
-      });
+      const hasContent = kvResult.value.tweets && kvResult.value.tweets.length > 0;
+      if (hasContent) {
+        userCaches.set(username.toLowerCase(), { payload: kvResult.value, cachedAt: Date.now() });
+        return NextResponse.json(kvResult.value, {
+          headers: { ...rl.headers, ...getCacheHeaders('HIT_KV') },
+        });
+      }
     }
 
     // Fetch fresh data
     try {
       const data = await fetchTwitterData(username);
 
-      // Update caches
-      userCaches.set(username.toLowerCase(), { payload: data, cachedAt: Date.now() });
-      await kvSetWithTimestamp(cacheKey, data, TWITTER_STALE_TTL_MS);
+      // Only cache results that have tweets
+      if (data.tweets && data.tweets.length > 0) {
+        userCaches.set(username.toLowerCase(), { payload: data, cachedAt: Date.now() });
+        await kvSetWithTimestamp(cacheKey, data, TWITTER_STALE_TTL_MS);
+      }
 
       return NextResponse.json(data, {
         headers: { ...rl.headers, ...getCacheHeaders('MISS') },
       });
     } catch (fetchError) {
-      // If we have stale data, return it
-      if (kvResult) {
+      // If we have stale data with content, return it
+      if (kvResult && kvResult.value.tweets && kvResult.value.tweets.length > 0) {
         return NextResponse.json(kvResult.value, {
           headers: { ...rl.headers, ...getCacheHeaders('STALE') },
         });
