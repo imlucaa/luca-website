@@ -18,6 +18,12 @@ const NITTER_INSTANCES = [
   'nitter.poast.org',
 ];
 
+// Known tweet IDs for the default user - fallback when all discovery methods fail
+// Update this list when new tweets are posted
+const KNOWN_TWEET_IDS: Record<string, string[]> = {
+  'osseds': ['2024940749524271553'],
+};
+
 // In-memory cache per username
 const userCaches = new Map<string, { payload: TwitterData; cachedAt: number }>();
 
@@ -311,75 +317,48 @@ async function fetchTweetIdsFromSyndication(username: string, limit = 5): Promis
   }
 }
 
-// Twitter's public web app bearer token (same one used by twitter.com frontend)
-const TWITTER_PUBLIC_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+// KV key for storing known tweet IDs (persists across deployments)
+const TWEET_IDS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function getTweetIdsCacheKey(username: string): string {
+  return `tweet-ids:v1:${username.toLowerCase()}`;
+}
 
 /**
- * Method 3b: Fetch tweet IDs using Twitter's Guest Token API.
- * Uses the same public bearer token that twitter.com's web client uses.
- * Works from datacenter IPs where Nitter is blocked.
+ * Store discovered tweet IDs in KV cache for later retrieval.
+ * This allows tweet IDs discovered from residential IPs (localhost)
+ * to be used by Vercel deployments on datacenter IPs.
  */
-async function fetchTweetIdsFromGuestApi(username: string, limit = 5): Promise<string[]> {
+async function storeTweetIdsInKv(username: string, tweetIds: string[]): Promise<void> {
+  if (tweetIds.length === 0) return;
   try {
-    // Step 1: Activate a guest token
-    console.log(`[Twitter] Activating guest token for @${username}`);
-    const activateResponse = await fetch('https://api.twitter.com/1.1/guest/activate.json', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${TWITTER_PUBLIC_BEARER}`,
-      },
-      signal: AbortSignal.timeout(10000),
-      cache: 'no-store',
-    });
-
-    if (!activateResponse.ok) {
-      console.log(`[Twitter] Guest token activation failed: ${activateResponse.status}`);
-      return [];
-    }
-
-    const activateData = await activateResponse.json();
-    const guestToken = activateData.guest_token;
-    if (!guestToken) {
-      console.log('[Twitter] No guest token in response');
-      return [];
-    }
-    console.log(`[Twitter] Got guest token: ${guestToken.substring(0, 8)}...`);
-
-    // Step 2: Fetch user timeline using guest token
-    const timelineUrl = `https://api.twitter.com/1.1/statuses/user_timeline.json?screen_name=${encodeURIComponent(username)}&count=${limit}&exclude_replies=true&include_rts=false&tweet_mode=extended`;
-    console.log(`[Twitter] Fetching timeline via guest API for @${username}`);
-    const timelineResponse = await fetch(timelineUrl, {
-      headers: {
-        'Authorization': `Bearer ${TWITTER_PUBLIC_BEARER}`,
-        'x-guest-token': guestToken,
-      },
-      signal: AbortSignal.timeout(10000),
-      cache: 'no-store',
-    });
-
-    if (!timelineResponse.ok) {
-      console.log(`[Twitter] Guest API timeline failed: ${timelineResponse.status}`);
-      // Try to read error body for more info
-      try {
-        const errBody = await timelineResponse.text();
-        console.log(`[Twitter] Guest API error body: ${errBody.substring(0, 200)}`);
-      } catch { /* ignore */ }
-      return [];
-    }
-
-    const tweets = await timelineResponse.json();
-    if (!Array.isArray(tweets) || tweets.length === 0) {
-      console.log('[Twitter] Guest API returned no tweets');
-      return [];
-    }
-
-    const ids = tweets.slice(0, limit).map((t: { id_str: string }) => t.id_str);
-    console.log(`[Twitter] Got ${ids.length} tweet IDs from guest API: ${ids.join(', ')}`);
-    return ids;
+    const key = getTweetIdsCacheKey(username);
+    await kvSetWithTimestamp(key, tweetIds, TWEET_IDS_TTL_MS);
+    console.log(`[Twitter] Stored ${tweetIds.length} tweet IDs in KV for @${username}`);
   } catch (err) {
-    console.log('[Twitter] Guest API error:', err instanceof Error ? err.message : err);
-    return [];
+    console.log('[Twitter] Failed to store tweet IDs in KV:', err instanceof Error ? err.message : err);
   }
+}
+
+/**
+ * Retrieve previously discovered tweet IDs from KV cache.
+ * Fallback when all live discovery methods fail (e.g., from datacenter IPs).
+ */
+async function retrieveTweetIdsFromKv(username: string): Promise<string[]> {
+  try {
+    const key = getTweetIdsCacheKey(username);
+    const result = await kvGetWithStale<string[]>(key, {
+      freshMs: TWEET_IDS_TTL_MS,
+      staleMs: TWEET_IDS_TTL_MS * 2, // Allow stale for up to 14 days
+    });
+    if (result && result.value && result.value.length > 0) {
+      console.log(`[Twitter] Retrieved ${result.value.length} tweet IDs from KV for @${username} (stale: ${result.isStale})`);
+      return result.value;
+    }
+  } catch (err) {
+    console.log('[Twitter] Failed to retrieve tweet IDs from KV:', err instanceof Error ? err.message : err);
+  }
+  return [];
 }
 
 /**
@@ -599,10 +578,19 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     tweetIds = await fetchTweetIdsFromSyndication(username, 5);
   }
 
-  // Method 3: If syndication failed, try Twitter Guest Token API
+  // Method 3: If all live discovery methods failed, try KV cache for previously known tweet IDs
   if (tweetIds.length === 0) {
-    console.log(`[Twitter] Syndication failed, trying guest token API for @${username}`);
-    tweetIds = await fetchTweetIdsFromGuestApi(username, 5);
+    console.log(`[Twitter] All live methods failed, checking KV for cached tweet IDs for @${username}`);
+    tweetIds = await retrieveTweetIdsFromKv(username);
+  }
+
+  // Method 4: If KV cache also empty, use hardcoded known tweet IDs as last resort
+  if (tweetIds.length === 0) {
+    const knownIds = KNOWN_TWEET_IDS[username.toLowerCase()];
+    if (knownIds && knownIds.length > 0) {
+      console.log(`[Twitter] Using ${knownIds.length} hardcoded known tweet IDs for @${username}`);
+      tweetIds = knownIds;
+    }
   }
 
   // Fetch full tweet data for each ID via FxTwitter
@@ -611,7 +599,7 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     tweets = await fetchTweets(username, tweetIds);
   }
 
-  // Method 4: If all ID methods failed, try Twitter API v2 with bearer token (returns full tweets directly)
+  // Method 5: If all ID methods failed, try Twitter API v2 with bearer token (returns full tweets directly)
   if (tweets.length === 0) {
     console.log(`[Twitter] All tweet ID methods failed, trying Twitter API v2 for @${username}`);
     tweets = await fetchTweetsFromTwitterApi(username, 5);
@@ -627,7 +615,14 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
           avatar_url: user.profile_image_url || t.author.avatar_url,
         },
       }));
+      // Store tweet IDs from API v2 in KV for future use
+      await storeTweetIdsInKv(username, tweets.map(t => t.id));
     }
+  }
+
+  // If we got tweets via any method, store the tweet IDs in KV for future fallback
+  if (tweets.length > 0 && tweetIds.length > 0) {
+    await storeTweetIdsInKv(username, tweetIds);
   }
 
   console.log(`[Twitter] Final result for @${username}: ${tweets.length} tweets`);
