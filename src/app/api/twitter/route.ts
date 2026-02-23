@@ -264,7 +264,55 @@ async function fetchTweetIds(username: string, limit = 5): Promise<string[]> {
 }
 
 /**
- * Method 3: Fetch tweets directly from Twitter API v2 using Bearer Token.
+ * Method 3: Fetch tweet IDs from Twitter syndication API (no auth required).
+ */
+async function fetchTweetIdsFromSyndication(username: string, limit = 5): Promise<string[]> {
+  try {
+    const url = `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(username)}`;
+    console.log(`[Twitter] Trying syndication API for @${username}`);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      console.log(`[Twitter] Syndication API returned ${response.status}`);
+      return [];
+    }
+
+    const html = await response.text();
+    // Extract tweet IDs from the syndication HTML
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    // Look for data-tweet-id or status URLs
+    const tweetIdRegex = /(?:data-tweet-id=["'](\d+)["']|\/status\/(\d+))/g;
+    let match;
+    while ((match = tweetIdRegex.exec(html)) !== null && ids.length < limit) {
+      const id = match[1] || match[2];
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+
+    if (ids.length > 0) {
+      console.log(`[Twitter] Got ${ids.length} tweet IDs from syndication: ${ids.join(', ')}`);
+    } else {
+      console.log(`[Twitter] Syndication returned HTML (${html.length} bytes) but no tweet IDs found`);
+    }
+    return ids;
+  } catch (err) {
+    console.log('[Twitter] Syndication API error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/**
+ * Method 4: Fetch tweets directly from Twitter API v2 using Bearer Token.
  * Falls back to this when Nitter instances are all down.
  */
 async function fetchTweetsFromTwitterApi(username: string, limit = 5): Promise<TwitterTweet[]> {
@@ -472,7 +520,13 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
   }
 
   // Method 1: Fetch tweet IDs from Nitter (RSS + HTML fallback) - latest 5 posts
-  const tweetIds = await fetchTweetIds(username, 5);
+  let tweetIds = await fetchTweetIds(username, 5);
+
+  // Method 2: If Nitter failed, try syndication API
+  if (tweetIds.length === 0) {
+    console.log(`[Twitter] Nitter failed, trying syndication API for @${username}`);
+    tweetIds = await fetchTweetIdsFromSyndication(username, 5);
+  }
 
   // Fetch full tweet data for each ID via FxTwitter
   let tweets: TwitterTweet[] = [];
@@ -480,9 +534,9 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     tweets = await fetchTweets(username, tweetIds);
   }
 
-  // Method 2: If Nitter failed, try Twitter API v2 with bearer token
+  // Method 3: If all ID methods failed, try Twitter API v2 with bearer token (returns full tweets directly)
   if (tweets.length === 0) {
-    console.log(`[Twitter] Nitter failed, trying Twitter API v2 for @${username}`);
+    console.log(`[Twitter] All tweet ID methods failed, trying Twitter API v2 for @${username}`);
     tweets = await fetchTweetsFromTwitterApi(username, 5);
 
     // Enrich author info from the profile we already fetched
@@ -499,6 +553,7 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     }
   }
 
+  console.log(`[Twitter] Final result for @${username}: ${tweets.length} tweets`);
   return { user, tweets };
 }
 
