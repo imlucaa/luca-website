@@ -331,8 +331,6 @@ export function MatchHistoryCard({
                       {formatModeName(match.metadata.mode)}
                     </span>
                     <span>{player.character}</span>
-                    <span>•</span>
-                    <span>{match.metadata.game_start_patched}</span>
                   </div>
                 </div>
 
