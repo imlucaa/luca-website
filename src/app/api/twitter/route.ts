@@ -41,7 +41,7 @@ function getCacheHeaders(cacheStatus: 'HIT' | 'MISS' | 'STALE' | 'HIT_KV'): Head
 }
 
 function getCacheKey(username: string): string {
-  return `api:twitter:v8:${username.toLowerCase()}`;
+  return `api:twitter:v9:${username.toLowerCase()}`;
 }
 
 // ─── FxTwitter API ───────────────────────────────────────────────────────────
@@ -311,6 +311,77 @@ async function fetchTweetIdsFromSyndication(username: string, limit = 5): Promis
   }
 }
 
+// Twitter's public web app bearer token (same one used by twitter.com frontend)
+const TWITTER_PUBLIC_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+
+/**
+ * Method 3b: Fetch tweet IDs using Twitter's Guest Token API.
+ * Uses the same public bearer token that twitter.com's web client uses.
+ * Works from datacenter IPs where Nitter is blocked.
+ */
+async function fetchTweetIdsFromGuestApi(username: string, limit = 5): Promise<string[]> {
+  try {
+    // Step 1: Activate a guest token
+    console.log(`[Twitter] Activating guest token for @${username}`);
+    const activateResponse = await fetch('https://api.twitter.com/1.1/guest/activate.json', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${TWITTER_PUBLIC_BEARER}`,
+      },
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+
+    if (!activateResponse.ok) {
+      console.log(`[Twitter] Guest token activation failed: ${activateResponse.status}`);
+      return [];
+    }
+
+    const activateData = await activateResponse.json();
+    const guestToken = activateData.guest_token;
+    if (!guestToken) {
+      console.log('[Twitter] No guest token in response');
+      return [];
+    }
+    console.log(`[Twitter] Got guest token: ${guestToken.substring(0, 8)}...`);
+
+    // Step 2: Fetch user timeline using guest token
+    const timelineUrl = `https://api.twitter.com/1.1/statuses/user_timeline.json?screen_name=${encodeURIComponent(username)}&count=${limit}&exclude_replies=true&include_rts=false&tweet_mode=extended`;
+    console.log(`[Twitter] Fetching timeline via guest API for @${username}`);
+    const timelineResponse = await fetch(timelineUrl, {
+      headers: {
+        'Authorization': `Bearer ${TWITTER_PUBLIC_BEARER}`,
+        'x-guest-token': guestToken,
+      },
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+
+    if (!timelineResponse.ok) {
+      console.log(`[Twitter] Guest API timeline failed: ${timelineResponse.status}`);
+      // Try to read error body for more info
+      try {
+        const errBody = await timelineResponse.text();
+        console.log(`[Twitter] Guest API error body: ${errBody.substring(0, 200)}`);
+      } catch { /* ignore */ }
+      return [];
+    }
+
+    const tweets = await timelineResponse.json();
+    if (!Array.isArray(tweets) || tweets.length === 0) {
+      console.log('[Twitter] Guest API returned no tweets');
+      return [];
+    }
+
+    const ids = tweets.slice(0, limit).map((t: { id_str: string }) => t.id_str);
+    console.log(`[Twitter] Got ${ids.length} tweet IDs from guest API: ${ids.join(', ')}`);
+    return ids;
+  } catch (err) {
+    console.log('[Twitter] Guest API error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
 /**
  * Method 4: Fetch tweets directly from Twitter API v2 using Bearer Token.
  * Falls back to this when Nitter instances are all down.
@@ -528,13 +599,19 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     tweetIds = await fetchTweetIdsFromSyndication(username, 5);
   }
 
+  // Method 3: If syndication failed, try Twitter Guest Token API
+  if (tweetIds.length === 0) {
+    console.log(`[Twitter] Syndication failed, trying guest token API for @${username}`);
+    tweetIds = await fetchTweetIdsFromGuestApi(username, 5);
+  }
+
   // Fetch full tweet data for each ID via FxTwitter
   let tweets: TwitterTweet[] = [];
   if (tweetIds.length > 0) {
     tweets = await fetchTweets(username, tweetIds);
   }
 
-  // Method 3: If all ID methods failed, try Twitter API v2 with bearer token (returns full tweets directly)
+  // Method 4: If all ID methods failed, try Twitter API v2 with bearer token (returns full tweets directly)
   if (tweets.length === 0) {
     console.log(`[Twitter] All tweet ID methods failed, trying Twitter API v2 for @${username}`);
     tweets = await fetchTweetsFromTwitterApi(username, 5);
