@@ -15,14 +15,14 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "ossed's profile",
-  description: "ossed's profile",
+  title: 'ossed',
+  description: "ossed's site",
   icons: {
-    icon: [],
+    icon: 'data:,',
   },
   openGraph: {
-    title: "ossed's profile",
-    description: "ossed's profile",
+    title: "ossed's site",
+    description: "ossed's site",
     type: 'website',
   },
 };
