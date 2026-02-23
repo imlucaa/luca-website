@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/server/rate-limit';
 import { kvGetWithStale, kvSetWithTimestamp } from '@/lib/server/kv-cache';
 import type { TwitterData, TwitterUser, TwitterTweet, TwitterMedia } from '@/lib/types';
+import { TWITTER_USERNAME } from '@/lib/constants';
 
-const TWITTER_DEFAULT_USERNAME = process.env.TWITTER_USERNAME || 'osseds';
+const TWITTER_DEFAULT_USERNAME = TWITTER_USERNAME;
 
 const TWITTER_CACHE_TTL_MS = 5 * 60 * 1000;
 const TWITTER_STALE_TTL_MS = 15 * 60 * 1000;

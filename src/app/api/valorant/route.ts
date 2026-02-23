@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { kvGetWithStale, kvSetWithTimestamp } from "@/lib/server/kv-cache";
 import { rateLimit } from "@/lib/server/rate-limit";
+import { HENRIK_API_KEY } from "@/lib/constants";
 import {
   ValorantMatch,
   AgentStats,
@@ -234,8 +235,8 @@ function calculateAggregatedStats(
 
 async function fetchFreshValorantData(playerName: string, playerTag: string): Promise<ValorantApiPayload> {
   const headers: HeadersInit = {};
-  if (process.env.HENRIK_API_KEY) {
-    headers["Authorization"] = process.env.HENRIK_API_KEY;
+  if (HENRIK_API_KEY) {
+    headers["Authorization"] = HENRIK_API_KEY;
   }
 
   const accountResponse = await fetch(

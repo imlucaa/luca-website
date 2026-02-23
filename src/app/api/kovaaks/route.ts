@@ -3,11 +3,11 @@ import { rateLimit } from '@/lib/server/rate-limit';
 import { kvGetWithStale, kvSetWithTimestamp } from '@/lib/server/kv-cache';
 import type { KovaaksBenchmarkProgress, KovaaksCategoryProgress, KovaaksData, KovaaksVtEnergyResult } from '@/lib/types';
 import { calculateVtEnergyForTier, getBestVtEnergyResult } from '@/lib/vt-energy';
-import { STEAM_API_KEY } from '@/lib/constants';
+import { STEAM_API_KEY, KOVAAKS_USERNAME, KOVAAKS_STEAM_ID } from '@/lib/constants';
 
 const KOVAAKS_API_BASE = 'https://kovaaks.com/webapp-backend';
-const KOVAAKS_DEFAULT_USERNAME = process.env.KOVAAKS_USERNAME || 'ossed';
-const KOVAAKS_DEFAULT_STEAM_ID = process.env.KOVAAKS_STEAM_ID || '';
+const KOVAAKS_DEFAULT_USERNAME = KOVAAKS_USERNAME;
+const KOVAAKS_DEFAULT_STEAM_ID = KOVAAKS_STEAM_ID;
 
 // Voltaic S5 Benchmark IDs for each tier (numeric IDs from KoVaaK's API)
 const VOLTAIC_S5_BENCHMARKS = {
