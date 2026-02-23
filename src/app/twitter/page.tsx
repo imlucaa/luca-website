@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react';
 import { useTwitter } from '@/hooks/useTwitter';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { SearchModal, SearchButton } from '@/components/ui/SearchModal';
-import { TwitterProfileCard } from '@/components/twitter/TwitterProfileCard';
 import { TwitterRecentPosts } from '@/components/twitter/TwitterRecentPosts';
 import { X } from 'lucide-react';
 
@@ -131,9 +130,6 @@ export default function TwitterPage() {
           label="Search User"
         />
       </div>
-
-      {/* Profile Card */}
-      <TwitterProfileCard user={data.user} />
 
       {/* Recent Posts */}
       <TwitterRecentPosts tweets={data.tweets} />

@@ -34,7 +34,7 @@ export function TimeCard() {
         </div>
         <div className="time-location">
           <Clock className="w-3 h-3 opacity-50" />
-          <span>Sydney, AU</span>
+          <span>Australia</span>
         </div>
       </div>
     </BentoCard>

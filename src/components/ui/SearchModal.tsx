@@ -8,6 +8,7 @@ interface SearchModalProps {
   onClose: () => void;
   onSearch: (query: string) => void;
   title: string;
+  subtitle?: string;
   placeholder: string;
   icon: React.ReactNode;
   accentColor: string;
@@ -21,6 +22,7 @@ export function SearchModal({
   onClose,
   onSearch,
   title,
+  subtitle,
   placeholder,
   icon,
   accentColor,
@@ -101,7 +103,7 @@ export function SearchModal({
             </div>
             <div>
               <h2 className="search-modal-title">{title}</h2>
-              <p className="search-modal-subtitle">Enter a username to view their profile</p>
+              <p className="search-modal-subtitle">{subtitle || 'Enter a username to view their profile'}</p>
             </div>
           </div>
           <button

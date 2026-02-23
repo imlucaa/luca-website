@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-export default function KovaaksError({
+export default function VoltaicError({
   error,
   reset,
 }: {
@@ -10,14 +10,14 @@ export default function KovaaksError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('KovaaK\'s page error:', error);
+    console.error('Voltaic page error:', error);
   }, [error]);
 
   return (
     <main className="bento-container">
       <div className="bento-card col-span-4 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-4">KovaaK&apos;s</h1>
+          <h1 className="text-4xl font-bold mb-4">Voltaic</h1>
           <p className="text-red-400 mb-4">Something went wrong loading the page.</p>
           <button
             onClick={reset}

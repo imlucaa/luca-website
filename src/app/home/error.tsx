@@ -1,6 +1,6 @@
 'use client';
 
-export default function GeneralError({
+export default function HomeError({
   reset,
 }: {
   error: Error & { digest?: string };
@@ -10,7 +10,7 @@ export default function GeneralError({
     <main className="bento-container">
       <div className="bento-card col-span-4 flex min-h-[320px] items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">General tab failed to load</h1>
+          <h1 className="text-2xl font-bold mb-2">Home tab failed to load</h1>
           <p className="text-sm text-gray-400 mb-4">Profile widgets could not be rendered.</p>
           <button
             type="button"

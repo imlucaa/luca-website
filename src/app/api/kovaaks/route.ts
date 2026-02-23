@@ -294,7 +294,63 @@ export async function GET(request: Request) {
 
   // Determine the steamId to use
   let steamId = searchSteamId || '';
-  let username = searchUsername || KOVAAKS_DEFAULT_USERNAME;
+  let username = searchUsername || (searchSteamId ? searchSteamId : KOVAAKS_DEFAULT_USERNAME);
+
+  // If we have a steamId from search but no username, try to resolve the username
+  if (steamId && !searchUsername && searchSteamId) {
+    // Try multiple approaches to resolve username from steamId
+    let resolved = false;
+
+    // Approach 1: KoVaaK's profile by-steamid endpoint
+    if (!resolved) {
+      try {
+        const url = `${KOVAAKS_API_BASE}/user/profile/by-steamid?steamId=${encodeURIComponent(steamId)}`;
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json', 'User-Agent': 'luca-website/1.0' },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const resolvedName = data?.username || data?.name || null;
+          if (resolvedName) { username = resolvedName; resolved = true; }
+        }
+      } catch {
+        // Continue to next approach
+      }
+    }
+
+    // Approach 2: KoVaaK's profile by-name using steamId as username
+    if (!resolved) {
+      try {
+        const url = `${KOVAAKS_API_BASE}/user/profile/by-name?username=${encodeURIComponent(steamId)}`;
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json', 'User-Agent': 'luca-website/1.0' },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const resolvedName = data?.username || data?.name || null;
+          if (resolvedName) { username = resolvedName; resolved = true; }
+        }
+      } catch {
+        // Continue to next approach
+      }
+    }
+
+    // Approach 3: Use Steam persona name as fallback display name
+    if (!resolved && STEAM_API_KEY) {
+      try {
+        const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${STEAM_API_KEY}&steamids=${steamId}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          const player = data?.response?.players?.[0];
+          const personaName = player?.personaname || null;
+          if (personaName) { username = personaName; resolved = true; }
+        }
+      } catch {
+        // Continue with steamId as display name
+      }
+    }
+  }
 
   // If we have a username but no steamId, try to resolve it
   if (!steamId && searchUsername) {

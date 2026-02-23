@@ -34,11 +34,11 @@ export function TwitterProfileCard({ user }: TwitterProfileCardProps) {
       {/* Banner */}
       {user.banner_url ? (
         <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="block">
-          <div className="w-full h-24 overflow-hidden">
+          <div className="w-full h-32 overflow-hidden">
             <img
               src={user.banner_url}
               alt={`${user.name}'s banner`}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover object-center"
             />
           </div>
         </a>

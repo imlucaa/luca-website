@@ -8,21 +8,15 @@ import { KovaaksProfileCard } from '@/components/kovaaks/KovaaksProfileCard';
 import { KovaaksBenchmarks } from '@/components/kovaaks/KovaaksBenchmarks';
 import { Search, X } from 'lucide-react';
 
-function KovaaksIcon({ size = 16 }: { size?: number }) {
+function VoltaicIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-      <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="12" cy="12" r="2" fill="currentColor" />
-      <line x1="12" y1="0" x2="12" y2="4" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="12" y1="20" x2="12" y2="24" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="0" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="20" y1="12" x2="24" y2="12" stroke="currentColor" strokeWidth="1.5" />
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M40.9,15.8H16.6c-0.3,0-0.5,0.1-0.6,0.3l-5.3,9.2c-0.1,0.2-0.1,0.5,0,0.7L39,75c0.3,0.5,0.9,0.5,1.2,0l23.2-40.2c0.3-0.5-0.1-1-0.6-1h-9c-0.5,0-0.9-0.6-0.6-1.1l3.9-6.8c0.1-0.2,0.4-0.3,0.6-0.3h19.2c0.5,0,0.9,0.6,0.6,1L44.3,84.2l0,0h11c0.3,0,0.5-0.1,0.6-0.3L89.3,26c0.1-0.2,0.1-0.5,0-0.7L84,16.1c-0.1-0.2-0.4-0.3-0.6-0.3H51.9c-0.3,0-0.5,0.1-0.6,0.4L37.6,39.9c-0.3,0.5,0.1,1,0.6,1h9.1c0.5,0,0.9,0.6,0.6,1l-7.7,13.3c-0.3,0.5-0.9,0.5-1.2,0L22.5,26.7c-0.3-0.5,0.1-1,0.6-1H36c0.3,0,0.5-0.1,0.6-0.4l4.9-8.5C41.8,16.3,41.4,15.8,40.9,15.8z"/>
     </svg>
   );
 }
 
-export default function KovaaksPage() {
+export default function VoltaicPage() {
   const [searchUsername, setSearchUsername] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -64,7 +58,7 @@ export default function KovaaksPage() {
 
         <div className="bento-card col-span-4 flex items-center justify-center min-h-[400px]">
           <div className="text-center">
-            <h1 className="text-4xl font-bold mb-4">KovaaK&apos;s</h1>
+            <h1 className="text-4xl font-bold mb-4">Voltaic</h1>
             <p className={isRateLimited ? 'text-yellow-400' : 'text-red-400'}>
               {isRateLimited ? '⏳ ' : ''}
               {error || 'Failed to load data'}
@@ -90,15 +84,16 @@ export default function KovaaksPage() {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onSearch={handleSearch}
-          title="Search KovaaK's Profile"
-          placeholder="Enter Steam ID or KovaaK's username"
-          icon={<KovaaksIcon size={20} />}
+          title="Search Voltaic Profile"
+          subtitle="Displays the Voltaic S5 benchmarks"
+          placeholder="Enter Steam ID or username"
+          icon={<VoltaicIcon size={20} />}
           accentColor="#f97316"
           helpTitle="How to search:"
           helpItems={[
-            'Enter a Steam ID (e.g., 76561198262989813) for best results',
-            'Or enter a KovaaK\'s webapp username',
-            'Find your Steam ID at steamid.io or in your Steam profile URL',
+            'Enter your KovaaK\'s in-game username',
+            'Or use your Steam ID (numeric, 17 digits)',
+            'Scores are pulled from Voltaic Season 5 benchmarks',
           ]}
           isLoading={isSearching}
         />
@@ -155,15 +150,16 @@ export default function KovaaksPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSearch={handleSearch}
-        title="Search KovaaK's Profile"
-        placeholder="Enter Steam ID or KovaaK's username"
-        icon={<KovaaksIcon size={20} />}
+        title="Search Voltaic Profile"
+        subtitle="Displays the Voltaic S5 benchmarks"
+        placeholder="Enter Steam ID or username"
+        icon={<VoltaicIcon size={20} />}
         accentColor="#f97316"
         helpTitle="How to search:"
         helpItems={[
-          'Enter a Steam ID (e.g., 76561198262989813) for best results',
-          'Or enter a KovaaK\'s webapp username',
-          'Find your Steam ID at steamid.io or in your Steam profile URL',
+          'Enter your KovaaK\'s in-game username',
+          'Or use your Steam ID (numeric, 17 digits)',
+          'Scores are pulled from Voltaic Season 5 benchmarks',
         ]}
         isLoading={isSearching}
       />

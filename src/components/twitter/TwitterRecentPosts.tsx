@@ -20,10 +20,24 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+function getProxyUrl(originalUrl: string): string {
+  return `/api/twitter/video?url=${encodeURIComponent(originalUrl)}`;
+}
+
+function VideoPlayer({ url, thumbnailUrl }: { url: string; thumbnailUrl?: string }) {
+  const proxyVideoUrl = getProxyUrl(url);
+  const proxyPosterUrl = thumbnailUrl ? getProxyUrl(thumbnailUrl) : undefined;
+
+  return (
+    <video
+      src={proxyVideoUrl}
+      poster={proxyPosterUrl}
+      className="w-full max-h-[400px] object-contain bg-black"
+      controls
+      preload="metadata"
+      playsInline
+    />
+  );
 }
 
 function TweetCard({ tweet }: { tweet: TwitterTweet }) {
@@ -94,28 +108,10 @@ function TweetCard({ tweet }: { tweet: TwitterTweet }) {
                   />
                 </a>
               ) : (
-                <a href={tweetUrl} target="_blank" rel="noopener noreferrer" className="block relative group cursor-pointer">
-                  <img
-                    src={media.thumbnail_url || media.url}
-                    alt="Video thumbnail"
-                    className="w-full max-h-[400px] object-cover"
-                    loading="lazy"
-                  />
-                  {/* Play button overlay */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-                    <div className="w-12 h-12 rounded-full bg-[#1d9bf0] flex items-center justify-center shadow-lg">
-                      <svg className="w-5 h-5 text-white ml-0.5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </div>
-                  </div>
-                  {/* Duration badge */}
-                  {media.duration && (
-                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 rounded text-xs text-white font-mono">
-                      {formatDuration(media.duration)}
-                    </div>
-                  )}
-                </a>
+                <VideoPlayer
+                  url={media.url}
+                  thumbnailUrl={media.thumbnail_url}
+                />
               )}
             </div>
           ))}

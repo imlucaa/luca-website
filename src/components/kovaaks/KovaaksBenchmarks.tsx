@@ -85,6 +85,17 @@ const CATEGORY_SUBCATEGORIES: Record<string, string[]> = {
   'Switching': ['Speed', 'Evasive', 'Stability'],
 };
 
+// Reverse map: subcategory name → parent category name
+const SUBCATEGORY_TO_CATEGORY: Record<string, string> = {};
+for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+  for (const sub of subs) {
+    SUBCATEGORY_TO_CATEGORY[sub] = cat;
+  }
+}
+
+// Ordered parent categories
+const PARENT_CATEGORY_ORDER = ['Clicking', 'Tracking', 'Switching'];
+
 interface SubcategoryEnergyMap {
   [subcategoryName: string]: {
     energy: number;
@@ -195,7 +206,6 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
             }
           }
 
-          const categoryNames = Object.keys(data.categories);
           // Build visible ranks: pair each actual rank with its rank_maxes index.
           // The ranks array may start with "No Rank"/"Unranked" which has no
           // corresponding entry in scenario.rank_maxes. rank_maxes is 0-indexed
@@ -281,157 +291,264 @@ export function KovaaksBenchmarks({ benchmarks, allBenchmarks, vtEnergy }: Kovaa
                         </tr>
                       </thead>
                       <tbody>
-                        {categoryNames.map((categoryName) => {
-                          const category = data.categories[categoryName];
-                          const scenarioEntries = Object.entries(category.scenarios);
-                          const subcategoryNames = CATEGORY_SUBCATEGORIES[categoryName] || [];
-                          const categoryColor = CATEGORY_COLORS[categoryName] || '#6b7280';
+                        {(() => {
+                          // Group API categories (which are actually subcategories) into parent categories
+                          // API returns: Dynamic, Static, Linear, Precise, Reactive, Control, Speed, Evasive, Stability
+                          // We group into: Clicking (Dynamic, Static, Linear), Tracking (Precise, Reactive, Control), Switching (Speed, Evasive, Stability)
 
-                          // Build subcategory groups
-                          const groups: Array<{
-                            subcategoryName: string;
-                            scenarios: Array<[string, typeof scenarioEntries[0][1]]>;
-                            energy: number;
+                          // Build parent category groups from API categories
+                          const parentGroups: Array<{
+                            parentName: string;
+                            parentColor: string;
+                            subcategories: Array<{
+                              subcategoryName: string;
+                              subcategoryColor: string;
+                              scenarios: Array<[string, { score: number; leaderboard_rank: number; scenario_rank: number; rank_maxes: number[]; leaderboard_id: number }]>;
+                              energy: number;
+                            }>;
                           }> = [];
 
-                          let scenarioIdx = 0;
-                          for (const subName of subcategoryNames) {
-                            const groupScenarios: Array<[string, typeof scenarioEntries[0][1]]> = [];
-                            for (let i = 0; i < 2 && scenarioIdx < scenarioEntries.length; i++) {
-                              groupScenarios.push(scenarioEntries[scenarioIdx]);
-                              scenarioIdx++;
+                          // Check if API categories are subcategory-level (e.g., "Dynamic", "Static")
+                          // or parent-level (e.g., "Clicking", "Tracking")
+                          const apiCatNames = Object.keys(data.categories);
+                          const isSubcategoryLevel = apiCatNames.some((name) => SUBCATEGORY_TO_CATEGORY[name] != null);
+
+                          if (isSubcategoryLevel) {
+                            // API returns subcategory-level categories — group them into parents
+                            for (const parentName of PARENT_CATEGORY_ORDER) {
+                              const subcatNames = CATEGORY_SUBCATEGORIES[parentName] || [];
+                              const subcategories: typeof parentGroups[0]['subcategories'] = [];
+
+                              for (const subName of subcatNames) {
+                                const apiCat = data.categories[subName];
+                                if (!apiCat) continue;
+                                const scenarioEntries = Object.entries(apiCat.scenarios);
+                                subcategories.push({
+                                  subcategoryName: subName,
+                                  subcategoryColor: SUBCATEGORY_COLORS[subName] || '#6b7280',
+                                  scenarios: scenarioEntries,
+                                  energy: subcategoryEnergyMap[subName]?.energy ?? 0,
+                                });
+                              }
+
+                              if (subcategories.length > 0) {
+                                parentGroups.push({
+                                  parentName,
+                                  parentColor: CATEGORY_COLORS[parentName] || '#6b7280',
+                                  subcategories,
+                                });
+                              }
                             }
-                            groups.push({
-                              subcategoryName: subName,
-                              scenarios: groupScenarios,
-                              energy: subcategoryEnergyMap[subName]?.energy ?? 0,
-                            });
+
+                            // Handle any API categories not in our mapping
+                            for (const apiCatName of apiCatNames) {
+                              if (!SUBCATEGORY_TO_CATEGORY[apiCatName]) {
+                                const apiCat = data.categories[apiCatName];
+                                const scenarioEntries = Object.entries(apiCat.scenarios);
+                                parentGroups.push({
+                                  parentName: apiCatName,
+                                  parentColor: CATEGORY_COLORS[apiCatName] || '#6b7280',
+                                  subcategories: [{
+                                    subcategoryName: apiCatName,
+                                    subcategoryColor: SUBCATEGORY_COLORS[apiCatName] || '#6b7280',
+                                    scenarios: scenarioEntries,
+                                    energy: subcategoryEnergyMap[apiCatName]?.energy ?? 0,
+                                  }],
+                                });
+                              }
+                            }
+                          } else {
+                            // API returns parent-level categories (e.g., "Clicking") — use old grouping logic
+                            for (const categoryName of apiCatNames) {
+                              const category = data.categories[categoryName];
+                              const scenarioEntries = Object.entries(category.scenarios);
+                              const subcatNames = CATEGORY_SUBCATEGORIES[categoryName] || [];
+
+                              const subcategories: typeof parentGroups[0]['subcategories'] = [];
+                              let scenarioIdx = 0;
+                              for (const subName of subcatNames) {
+                                const groupScenarios: typeof scenarioEntries = [];
+                                for (let i = 0; i < 2 && scenarioIdx < scenarioEntries.length; i++) {
+                                  groupScenarios.push(scenarioEntries[scenarioIdx]);
+                                  scenarioIdx++;
+                                }
+                                subcategories.push({
+                                  subcategoryName: subName,
+                                  subcategoryColor: SUBCATEGORY_COLORS[subName] || '#6b7280',
+                                  scenarios: groupScenarios,
+                                  energy: subcategoryEnergyMap[subName]?.energy ?? 0,
+                                });
+                              }
+
+                              if (subcategories.length === 0) {
+                                subcategories.push({
+                                  subcategoryName: categoryName,
+                                  subcategoryColor: SUBCATEGORY_COLORS[categoryName] || '#6b7280',
+                                  scenarios: scenarioEntries,
+                                  energy: 0,
+                                });
+                              }
+
+                              parentGroups.push({
+                                parentName: categoryName,
+                                parentColor: CATEGORY_COLORS[categoryName] || '#6b7280',
+                                subcategories,
+                              });
+                            }
                           }
 
-                          // Fallback if no subcategory mapping
-                          if (groups.length === 0) {
-                            groups.push({
-                              subcategoryName: categoryName,
-                              scenarios: scenarioEntries,
-                              energy: 0,
-                            });
-                          }
+                          // Render rows
+                          return parentGroups.map((parent) => {
+                            const totalParentRows = parent.subcategories.reduce(
+                              (sum, sub) => sum + sub.scenarios.length, 0
+                            );
+                            let isFirstParentRow = true;
 
-                          const totalCategoryRows = groups.reduce((s, g) => s + g.scenarios.length, 0);
-                          let isFirstCategoryRow = true;
+                            return parent.subcategories.map((sub, subIdx) => {
+                              return sub.scenarios.map(([scenarioName, scenario], sIdx) => {
+                                const isCompleted = scenario.score > 0;
+                                const displayScore = convertApiScore(scenario.score);
+                                const showParent = isFirstParentRow;
+                                const showSubcategory = sIdx === 0;
+                                const showEnergy = sIdx === 0;
+                                const achievedRankIdx = getAchievedRankIdx(scenario, displayRanks);
+                                const achievedRankColor = achievedRankIdx >= 0
+                                  ? getRankColor(achievedRankIdx, data.ranks)
+                                  : undefined;
 
-                          return groups.map((group, groupIdx) => {
-                            const subcategoryColor = SUBCATEGORY_COLORS[group.subcategoryName] || '#6b7280';
+                                if (isFirstParentRow) isFirstParentRow = false;
 
-                            return group.scenarios.map(([scenarioName, scenario], sIdx) => {
-                              const isCompleted = scenario.score > 0;
-                              const displayScore = convertApiScore(scenario.score);
-                              const showCategory = isFirstCategoryRow;
-                              const showSubcategory = sIdx === 0;
-                              const showEnergy = sIdx === 0;
-                              const achievedRankIdx = getAchievedRankIdx(scenario, displayRanks);
-                              const achievedRankColor = achievedRankIdx >= 0
-                                ? getRankColor(achievedRankIdx, data.ranks)
-                                : undefined;
-
-                              if (isFirstCategoryRow) isFirstCategoryRow = false;
-
-                              return (
-                                <tr
-                                  key={`${categoryName}-${groupIdx}-${sIdx}`}
-                                  className={`kvk-tr${showSubcategory ? ' kvk-tr-sub-first' : ''}`}
-                                >
-                                  {/* Category cell - colored */}
-                                  {showCategory && (
-                                    <td
-                                      className="kvk-td kvk-td-cat"
-                                      rowSpan={totalCategoryRows}
-                                      style={{ borderRightColor: categoryColor + '40' }}
-                                    >
-                                      <span
-                                        className="kvk-cat-label"
-                                        style={{ color: categoryColor }}
-                                      >
-                                        {categoryName}
-                                      </span>
-                                    </td>
-                                  )}
-
-                                  {/* Subcategory cell - colored */}
-                                  {showSubcategory && (
-                                    <td
-                                      className="kvk-td kvk-td-subcat"
-                                      rowSpan={group.scenarios.length}
-                                      style={{ borderRightColor: subcategoryColor + '30' }}
-                                    >
-                                      <span
-                                        className="kvk-subcat-label"
-                                        style={{ color: subcategoryColor }}
-                                      >
-                                        {group.subcategoryName}
-                                      </span>
-                                    </td>
-                                  )}
-
-                                  {/* Scenario name */}
-                                  <td className="kvk-td kvk-td-scenario" title={scenarioName}>
-                                    {scenarioName}
-                                  </td>
-
-                                  {/* Score - colored by achieved rank with diagonal fill */}
-                                  <td
-                                    className={`kvk-td kvk-td-score${isCompleted && achievedRankColor ? ' kvk-td-rank-achieved' : ''}`}
-                                    style={{
-                                      color: isCompleted ? '#fff' : '#4b5563',
-                                      fontWeight: isCompleted ? 600 : 400,
-                                      ...(isCompleted && achievedRankColor ? {
-                                        background: `linear-gradient(135deg, ${achievedRankColor}90 0%, ${achievedRankColor}50 40%, ${achievedRankColor}20 100%)`,
-                                        borderLeft: `2px solid ${achievedRankColor}cc`,
-                                      } : {}),
-                                    }}
+                                return (
+                                  <tr
+                                    key={`${parent.parentName}-${subIdx}-${sIdx}`}
+                                    className={`kvk-tr${showSubcategory ? ' kvk-tr-sub-first' : ''}`}
                                   >
-                                    {isCompleted ? formatScore(displayScore) : '—'}
-                                  </td>
-
-                                  {/* Rank thresholds with diagonal gradient */}
-                                  {displayRanks.map(({ rankArrayIdx, rankMaxesIdx }) => {
-                                    const threshold = scenario.rank_maxes[rankMaxesIdx] ?? 0;
-                                    const isAchieved = isCompleted && threshold > 0 && displayScore >= threshold;
-                                    const rankColor = getRankColor(rankArrayIdx, data.ranks);
-                                    return (
+                                    {/* Parent category cell */}
+                                    {showParent && (
                                       <td
-                                        key={rankArrayIdx}
-                                        className={`kvk-td kvk-td-rank${isAchieved ? ' kvk-td-rank-achieved' : ''}`}
-                                        style={{
-                                          background: isAchieved
-                                            ? `linear-gradient(135deg, ${rankColor}90 0%, ${rankColor}50 40%, ${rankColor}20 100%)`
-                                            : `linear-gradient(135deg, ${rankColor}18 0%, ${rankColor}08 60%, transparent 100%)`,
-                                          color: isAchieved ? '#fff' : rankColor + '55',
-                                          borderLeft: `2px solid ${isAchieved ? rankColor + 'cc' : rankColor + '18'}`,
-                                        }}
+                                        className="kvk-td kvk-td-cat"
+                                        rowSpan={totalParentRows}
+                                        style={{ borderRightColor: parent.parentColor + '40' }}
                                       >
-                                        {formatScore(threshold)}
+                                        <span
+                                          className="kvk-cat-label"
+                                          style={{ color: parent.parentColor }}
+                                        >
+                                          {parent.parentName}
+                                        </span>
                                       </td>
-                                    );
-                                  })}
+                                    )}
 
-                                  {/* Energy */}
-                                  {showEnergy && (
+                                    {/* Subcategory cell */}
+                                    {showSubcategory && (
+                                      <td
+                                        className="kvk-td kvk-td-subcat"
+                                        rowSpan={sub.scenarios.length}
+                                        style={{ borderRightColor: sub.subcategoryColor + '30' }}
+                                      >
+                                        <span
+                                          className="kvk-subcat-label"
+                                          style={{ color: sub.subcategoryColor }}
+                                        >
+                                          {sub.subcategoryName}
+                                        </span>
+                                      </td>
+                                    )}
+
+                                    {/* Scenario name */}
+                                    <td className="kvk-td kvk-td-scenario" title={scenarioName}>
+                                      {scenarioName}
+                                    </td>
+
+                                    {/* Score */}
                                     <td
-                                      className="kvk-td kvk-td-energy"
-                                      rowSpan={group.scenarios.length}
+                                      className="kvk-td kvk-td-score"
                                       style={{
-                                        color: group.energy > 0 ? '#e5e7eb' : '#4b5563',
+                                        color: isCompleted
+                                          ? (achievedRankColor || '#fff')
+                                          : '#4b5563',
+                                        fontWeight: isCompleted ? 600 : 400,
                                       }}
                                     >
-                                      {group.energy > 0 ? group.energy : '—'}
+                                      {isCompleted ? formatScore(displayScore) : '—'}
                                     </td>
-                                  )}
-                                </tr>
-                              );
+
+                                    {/* Rank thresholds with partial fill bars */}
+                                    {displayRanks.map(({ rankArrayIdx, rankMaxesIdx }, rankIdx) => {
+                                      const threshold = scenario.rank_maxes[rankMaxesIdx] ?? 0;
+                                      const isAchieved = isCompleted && threshold > 0 && displayScore >= threshold;
+                                      const rankColor = getRankColor(rankArrayIdx, data.ranks);
+
+                                      let fillPercent = 0;
+                                      if (isCompleted && threshold > 0) {
+                                        if (isAchieved) {
+                                          fillPercent = 100;
+                                        } else {
+                                          const prevThreshold = rankIdx > 0
+                                            ? (scenario.rank_maxes[displayRanks[rankIdx - 1].rankMaxesIdx] ?? 0)
+                                            : 0;
+                                          const range = threshold - prevThreshold;
+                                          if (range > 0 && displayScore > prevThreshold) {
+                                            fillPercent = Math.min(((displayScore - prevThreshold) / range) * 100, 99);
+                                          }
+                                        }
+                                      }
+
+                                      return (
+                                        <td
+                                          key={rankArrayIdx}
+                                          className={`kvk-td kvk-td-rank${isAchieved ? ' kvk-td-rank-achieved' : ''}`}
+                                          style={{
+                                            position: 'relative',
+                                            overflow: 'hidden',
+                                            background: isAchieved
+                                              ? `linear-gradient(135deg, ${rankColor}90 0%, ${rankColor}50 40%, ${rankColor}20 100%)`
+                                              : 'transparent',
+                                            color: isAchieved ? '#fff' : (fillPercent > 0 ? rankColor + '90' : rankColor + '55'),
+                                            borderLeft: `2px solid ${isAchieved ? rankColor + 'cc' : (fillPercent > 0 ? rankColor + '40' : rankColor + '18')}`,
+                                          }}
+                                        >
+                                          {!isAchieved && fillPercent > 0 && (
+                                            <div
+                                              className="kvk-rank-fill"
+                                              style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                left: 0,
+                                                bottom: 0,
+                                                width: `${fillPercent}%`,
+                                                background: `linear-gradient(90deg, ${rankColor}30 0%, ${rankColor}18 100%)`,
+                                                borderRight: `1px solid ${rankColor}25`,
+                                                pointerEvents: 'none',
+                                                transition: 'width 0.3s ease',
+                                              }}
+                                            />
+                                          )}
+                                          <span style={{ position: 'relative', zIndex: 1 }}>
+                                            {formatScore(threshold)}
+                                          </span>
+                                        </td>
+                                      );
+                                    })}
+
+                                    {/* Energy */}
+                                    {showEnergy && (
+                                      <td
+                                        className="kvk-td kvk-td-energy"
+                                        rowSpan={sub.scenarios.length}
+                                        style={{
+                                          color: sub.energy > 0 ? '#e5e7eb' : '#4b5563',
+                                        }}
+                                      >
+                                        {sub.energy > 0 ? sub.energy : '—'}
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              });
                             });
                           });
-                        })}
+                        })()}
                       </tbody>
                     </table>
                   </div>

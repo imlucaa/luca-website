@@ -365,8 +365,8 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     return { user, tweets: [] };
   }
 
-  // Fetch tweet IDs from Nitter (RSS + HTML fallback) - only the latest post
-  const tweetIds = await fetchTweetIds(username, 1);
+  // Fetch tweet IDs from Nitter (RSS + HTML fallback) - latest 5 posts
+  const tweetIds = await fetchTweetIds(username, 5);
 
   // Fetch full tweet data for each ID
   let tweets: TwitterTweet[] = [];

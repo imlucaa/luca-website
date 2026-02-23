@@ -50,7 +50,7 @@ export async function GET() {
     const payload: WeatherPayload = {
       temp,
       description,
-      location: name,
+      location: 'Australia',
       stale: false,
     };
 

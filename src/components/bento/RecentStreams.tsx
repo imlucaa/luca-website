@@ -1,32 +1,27 @@
 'use client';
 
 import Image from 'next/image';
-import { Music, RefreshCw } from 'lucide-react';
 import { useLastFm } from '@/hooks/useLastFm';
 import { BentoCard } from '@/components/ui/BentoCard';
 import { getTimeAgo, formatDuration } from '@/lib/utils';
 
 export function RecentStreams() {
-  const { tracks, error, isLoading, isStale, refetch } = useLastFm(10);
-
-  const handleRefresh = () => {
-    refetch();
-  };
+  const { tracks, error, isLoading, isStale } = useLastFm(10);
 
   return (
     <BentoCard colSpan={2}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Music className="w-4 h-4 opacity-70" />
+          <Image
+            src="https://cdn.simpleicons.org/spotify/white"
+            alt="Spotify"
+            className="w-4 h-4 opacity-60"
+            width={16}
+            height={16}
+            unoptimized
+          />
           <span className="text-label mb-0">Recent Streams</span>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="opacity-50 hover:opacity-100 transition-opacity"
-          disabled={isLoading}
-        >
-          <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-        </button>
       </div>
 
       <div className="tracks-list">

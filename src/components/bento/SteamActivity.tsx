@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import { useState } from 'react';
-import { RefreshCw } from 'lucide-react';
 import { useSteam } from '@/hooks/useSteam';
 import { BentoCard } from '@/components/ui/BentoCard';
 
@@ -26,11 +25,7 @@ function SteamGameIcon({ src, alt }: { src: string; alt: string }) {
 }
 
 export function SteamActivity() {
-  const { games, error, isLoading, isStale, refetch } = useSteam();
-
-  const handleRefresh = () => {
-    refetch();
-  };
+  const { games, error, isLoading, isStale } = useSteam();
 
   return (
     <BentoCard colSpan={2}>
@@ -46,13 +41,6 @@ export function SteamActivity() {
           />
           <span className="text-label mb-0">Steam Activity</span>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="opacity-40 hover:opacity-80 transition-opacity"
-          disabled={isLoading}
-        >
-          <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-        </button>
       </div>
 
       <div className="flex flex-col gap-2">

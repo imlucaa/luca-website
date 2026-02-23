@@ -1,11 +1,11 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect, useSyncExternalStore } from 'react';
+import { useState, useEffect, useSyncExternalStore, useCallback } from 'react';
 import { useLanyard } from '@/hooks/useLanyard';
 import { BentoCard } from '@/components/ui/BentoCard';
 import { formatTime, getActivityImageUrl } from '@/lib/utils';
-import { Music, Gamepad2, Tv, Radio, Trophy } from 'lucide-react';
+import { Music, Gamepad2, Play, Radio, Trophy } from 'lucide-react';
 
 interface SavedActivity {
   name: string;
@@ -27,7 +27,7 @@ const ACTIVITY_TYPES: Record<number, { label: string; icon: typeof Music }> = {
   0: { label: 'Playing', icon: Gamepad2 },
   1: { label: 'Streaming', icon: Radio },
   2: { label: 'Listening to', icon: Music },
-  3: { label: 'Watching', icon: Tv },
+  3: { label: 'Watching', icon: Play },
   5: { label: 'Competing in', icon: Trophy },
 };
 
@@ -47,6 +47,14 @@ export function ActivityCard() {
   const { data } = useLanyard();
   const hasHydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [imgError, setImgError] = useState(false);
+
+  // Reset image error when activity changes
+  const activityId = data?.activities?.find((a) => a.type !== 4)?.id;
+  const spotifyTrack = data?.spotify?.track_id;
+  useEffect(() => { setImgError(false); }, [activityId, spotifyTrack]);
+
+  const handleImgError = useCallback(() => { setImgError(true); }, []);
   const cachedSpotify = hasHydrated
     ? readLocalStorageItem<SavedSpotify>('lastSpotifySong')
     : null;
@@ -200,15 +208,16 @@ export function ActivityCard() {
         <div className="activity-wrapper">
           {/* Album art / Activity image */}
           <div className="activity-art-wrapper">
-            {content.image ? (
+            {content.image && !imgError ? (
               <>
                 <Image
                   src={content.image}
                   width={96}
                   height={96}
                   className="activity-art"
-                  alt="Activity"
+                  alt=""
                   unoptimized
+                  onError={handleImgError}
                 />
                 <div className="activity-art-border" />
               </>

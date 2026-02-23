@@ -113,7 +113,6 @@ export default function ValorantPage() {
           accentColor="#ff4655"
           helpTitle="How to find your Riot ID:"
           helpItems={[
-            'Open Valorant or visit tracker.gg',
             'Your Riot ID is shown as Name#Tag',
             'Include the # and tag number',
             'Example: PlayerName#1234',
@@ -285,7 +284,6 @@ export default function ValorantPage() {
         accentColor="#ff4655"
         helpTitle="How to find your Riot ID:"
         helpItems={[
-          'Open Valorant or visit tracker.gg',
           'Your Riot ID is shown as Name#Tag',
           'Include the # and tag number',
           'Example: PlayerName#1234',

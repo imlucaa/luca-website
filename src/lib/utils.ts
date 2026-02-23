@@ -36,7 +36,7 @@ export function formatDuration(duration: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function getActivityImageUrl(activity: { assets?: { large_image?: string; small_image?: string }; application_id?: string }): string | null {
+export function getActivityImageUrl(activity: { name?: string; assets?: { large_image?: string; small_image?: string }; application_id?: string }): string | null {
   if (!activity) return null;
 
   if (activity.assets) {
@@ -45,19 +45,27 @@ export function getActivityImageUrl(activity: { assets?: { large_image?: string;
     const image = largeImage || smallImage;
 
     if (image) {
-      if (image.startsWith('mp:external')) {
-        return image.replace(/mp:external\/([^\/]*)\/?(http[s]?)/g, '$2://');
+      // External media proxy URLs (e.g. mp:external/hash/https/example.com/path)
+      if (image.startsWith('mp:external/')) {
+        const withoutPrefix = image.slice('mp:external/'.length);
+        // Skip the hash segment, reconstruct the URL
+        const slashIdx = withoutPrefix.indexOf('/');
+        if (slashIdx !== -1) {
+          const rest = withoutPrefix.slice(slashIdx + 1);
+          // rest is like "https/example.com/path" — replace first / with ://
+          return rest.replace('/', '://');
+        }
       } else if (image.startsWith('mp:')) {
-        return `https://media.discordapp.net/${image.replace('mp:', '')}`;
+        return `https://media.discordapp.net/${image.slice(3)}`;
       } else if (activity.application_id) {
-        const extension = image.includes('.') ? '' : '.png';
-        return `https://cdn.discordapp.com/app-assets/${activity.application_id}/${image}${extension}`;
+        return `https://cdn.discordapp.com/app-assets/${activity.application_id}/${image}.png`;
       }
     }
   }
 
+  // Fallback: try to get the app icon using the application_id
   if (activity.application_id) {
-    return `https://cdn.discordapp.com/app-icons/${activity.application_id}/${activity.application_id}.png`;
+    return `https://dcdn.dstn.to/app-icons/${activity.application_id}`;
   }
 
   return null;

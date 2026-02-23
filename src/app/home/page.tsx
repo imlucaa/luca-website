@@ -10,7 +10,7 @@ import { SteamActivity } from '@/components/bento/SteamActivity';
 import { GearButton } from '@/components/bento/GearButton';
 import { GearModal } from '@/components/modals/GearModal';
 
-export default function GeneralPage() {
+export default function HomePage() {
   const [isGearModalOpen, setIsGearModalOpen] = useState(false);
 
   return (

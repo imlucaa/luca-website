@@ -96,7 +96,6 @@ export default function OsuPage() {
           helpItems={[
             'Open osu! or visit osu.ppy.sh',
             'Your username is shown on your profile',
-            'You can also use your user ID number',
           ]}
           isLoading={isSearching}
         />
@@ -163,7 +162,6 @@ export default function OsuPage() {
         helpItems={[
           'Open osu! or visit osu.ppy.sh',
           'Your username is shown on your profile',
-          'You can also use your user ID number',
         ]}
         isLoading={isSearching}
       />

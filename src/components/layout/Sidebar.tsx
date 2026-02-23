@@ -17,17 +17,11 @@ function ValorantIcon({ className }: { className?: string }) {
   );
 }
 
-// KovaaK's crosshair icon
-function KovaaksIcon({ className }: { className?: string }) {
+// Voltaic logo icon (from voltaic.gg favicon)
+function VoltaicIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-      <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="12" cy="12" r="2" fill="currentColor" />
-      <line x1="12" y1="0" x2="12" y2="4" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="12" y1="20" x2="12" y2="24" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="0" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="20" y1="12" x2="24" y2="12" stroke="currentColor" strokeWidth="1.5" />
+    <svg className={className} viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M40.9,15.8H16.6c-0.3,0-0.5,0.1-0.6,0.3l-5.3,9.2c-0.1,0.2-0.1,0.5,0,0.7L39,75c0.3,0.5,0.9,0.5,1.2,0l23.2-40.2c0.3-0.5-0.1-1-0.6-1h-9c-0.5,0-0.9-0.6-0.6-1.1l3.9-6.8c0.1-0.2,0.4-0.3,0.6-0.3h19.2c0.5,0,0.9,0.6,0.6,1L44.3,84.2l0,0h11c0.3,0,0.5-0.1,0.6-0.3L89.3,26c0.1-0.2,0.1-0.5,0-0.7L84,16.1c-0.1-0.2-0.4-0.3-0.6-0.3H51.9c-0.3,0-0.5,0.1-0.6,0.4L37.6,39.9c-0.3,0.5,0.1,1,0.6,1h9.1c0.5,0,0.9,0.6,0.6,1l-7.7,13.3c-0.3,0.5-0.9,0.5-1.2,0L22.5,26.7c-0.3-0.5,0.1-1,0.6-1H36c0.3,0,0.5-0.1,0.6-0.4l4.9-8.5C41.8,16.3,41.4,15.8,40.9,15.8z"/>
     </svg>
   );
 }
@@ -61,10 +55,10 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/general', icon: Home, label: 'General', tone: 'default' },
+  { href: '/home', icon: Home, label: 'Home', tone: 'default' },
   { href: '/valorant', icon: ValorantIcon, label: 'Valorant', tone: 'valorant' },
   { href: '/osu', icon: OsuIcon, label: 'osu!', tone: 'osu' },
-  { href: '/kovaaks', icon: KovaaksIcon, label: "KovaaK's", tone: 'kovaaks' },
+  { href: '/voltaic', icon: VoltaicIcon, label: 'Voltaic', tone: 'kovaaks' },
   { href: '/twitter', icon: TwitterIcon, label: 'Twitter', tone: 'twitter' },
 ];
 
@@ -74,10 +68,8 @@ export function Sidebar() {
   return (
     <nav className="topnav">
       <div className="topnav-inner">
-        {/* Brand */}
-        <Link href="/general" className="topnav-brand">
-          <span className="topnav-brand-text">luca</span>
-        </Link>
+        {/* Brand spacer for symmetry */}
+        <div className="topnav-brand" />
 
         {/* Navigation Links */}
         <div className="topnav-links">
