@@ -15,7 +15,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: 'ossed',
+  title: 'ossed.lol',
   description: '',
   icons: {
     icon: 'data:,',
