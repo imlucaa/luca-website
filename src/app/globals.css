@@ -2216,6 +2216,16 @@ h1, h2, h3 {
   .val-match-row {
     flex-wrap: wrap;
     gap: 8px;
+    padding: 10px;
+  }
+
+  .val-match-row .val-match-stats {
+    width: 100%;
+    justify-content: space-around;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: 2px;
+    flex-shrink: 1 !important;
   }
 
   .val-player-rank {

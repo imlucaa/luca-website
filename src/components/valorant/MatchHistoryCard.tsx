@@ -337,7 +337,7 @@ export function MatchHistoryCard({
                 </div>
 
                 {/* Stats */}
-                <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="val-match-stats flex items-center gap-4 flex-shrink-0">
                   <div className="text-center">
                     <div className="text-xs text-gray-400 mb-0.5">K/D/A</div>
                     <div className="font-semibold tabular-nums text-sm">
