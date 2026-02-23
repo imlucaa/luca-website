@@ -77,7 +77,7 @@ export function KovaaksProfileCard({ profile, bestVtEnergy }: KovaaksProfileCard
           </div>
         </div>
 
-        {/* Stats Row - Only VT Energy and Energy Rank */}
+        {/* Stats Row - Only VT Energy and Voltaic Rank */}
         <div className="kvk-stats-row">
           <div className="kvk-stat-card">
             <Zap size={14} className="text-gray-400" />
@@ -90,7 +90,7 @@ export function KovaaksProfileCard({ profile, bestVtEnergy }: KovaaksProfileCard
             <Trophy size={14} style={{ color: rankColor }} />
             <div>
               <div className="kvk-stat-value" style={{ color: rankColor }}>{rankName}</div>
-              <div className="kvk-stat-label">Energy Rank</div>
+              <div className="kvk-stat-label">Voltaic Rank</div>
             </div>
           </div>
         </div>

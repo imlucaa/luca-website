@@ -17,6 +17,9 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: 'luca',
   description: 'Personal portfolio website',
+  icons: {
+    icon: [],
+  },
 };
 
 export default function RootLayout({
