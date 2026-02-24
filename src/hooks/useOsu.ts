@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { OsuManiaData } from '@/lib/types';
 import { ApiError, fetchJson } from '@/lib/api-client';
 import { readLocalCache, writeLocalCache } from '@/lib/local-cache';
@@ -18,21 +18,48 @@ export function useOsu(searchUsername?: string | null) {
   const isSearch = Boolean(searchUsername);
   const cacheKey = isSearch ? `osu:search:${searchUsername!.toLowerCase()}` : 'osu:default';
 
-  // Load from local cache on mount or when search changes
+  // Track previous cacheKey to detect changes
+  const prevCacheKeyRef = useRef(cacheKey);
+
+  // When search changes, immediately reset state so stale data never shows
+  useEffect(() => {
+    if (prevCacheKeyRef.current !== cacheKey) {
+      prevCacheKeyRef.current = cacheKey;
+
+      // Clear previous data and errors immediately
+      setError(null);
+      setErrorCode(null);
+      setRetryAfter(null);
+      setIsStale(false);
+
+      // Try to load from local cache for the new key
+      const cached = readLocalCache<OsuManiaData>(cacheKey);
+      if (cached) {
+        setData(cached.data);
+        setLastUpdatedAt(cached.savedAt);
+        setIsStale(true);
+      } else {
+        setData(null);
+        setLastUpdatedAt(null);
+      }
+
+      // Mark as fetching so loading spinner shows
+      setIsFetching(true);
+      if (isSearch) setIsSearching(true);
+    }
+  }, [cacheKey, isSearch]);
+
+  // Load from local cache on initial mount only
   useEffect(() => {
     const cached = readLocalCache<OsuManiaData>(cacheKey);
-    if (!cached) {
-      setData(null);
-      setLastUpdatedAt(null);
-      setIsStale(false);
-      return;
+    if (cached) {
+      setData(cached.data);
+      setLastUpdatedAt(cached.savedAt);
+      setIsStale(true);
+      setIsFetching(false);
     }
-
-    setData(cached.data);
-    setLastUpdatedAt(cached.savedAt);
-    setIsStale(true);
-    setIsFetching(false);
-  }, [cacheKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   const fetchOsuData = useCallback(async () => {
     setIsFetching(true);

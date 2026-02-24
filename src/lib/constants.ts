@@ -4,7 +4,7 @@ export const LASTFM_USERNAME = process.env.LASTFM_USERNAME || 'lucasssca';
 export const LASTFM_API_KEY = process.env.LASTFM_API_KEY || '2df274d52e33e3d87ed5ad9466f5efe5';
 export const STEAM_ID = process.env.STEAM_ID || '76561199537922693';
 export const STEAM_API_KEY = process.env.STEAM_API_KEY || '35361B442FF8A7EF51204BF9BC6BC76B';
-export const WEATHER_LOCATION = process.env.WEATHER_LOCATION || 'Sydney';
+export const WEATHER_LOCATION = process.env.WEATHER_LOCATION || 'Launceston';
 
 // Valorant Configuration
 export const HENRIK_API_KEY = process.env.HENRIK_API_KEY || 'HDEV-ff0dc7ff-73be-44b2-8c34-5451c657e5a3';

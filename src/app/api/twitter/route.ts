@@ -271,50 +271,71 @@ async function fetchTweetIds(username: string, limit = 5): Promise<string[]> {
 
 /**
  * Method 3: Fetch tweet IDs from Twitter syndication API (no auth required).
+ * Tries multiple syndication endpoints for better reliability.
  */
 async function fetchTweetIdsFromSyndication(username: string, limit = 5): Promise<string[]> {
-  try {
-    const url = `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(username)}`;
-    console.log(`[Twitter] Trying syndication API for @${username}`);
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      signal: AbortSignal.timeout(10000),
-      cache: 'no-store',
-    });
+  // Try multiple syndication URL patterns
+  const syndicationUrls = [
+    `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(username)}`,
+    `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(username)}?dnt=true&embedId=twitter-widget-0&features=eyJ0ZndfdGltZWxpbmVfbGlzdCI6eyJidWNrZXQiOltdLCJ2ZXJzaW9uIjpudWxsfSwidGZ3X2ZvbGxvd2VyX2NvdW50X3N1bnNldCI6eyJidWNrZXQiOnRydWUsInZlcnNpb24iOm51bGx9fQ%3D%3D&lang=en`,
+  ];
 
-    if (!response.ok) {
-      console.log(`[Twitter] Syndication API returned ${response.status}`);
-      return [];
-    }
+  for (const url of syndicationUrls) {
+    try {
+      console.log(`[Twitter] Trying syndication API for @${username}`);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': 'https://platform.twitter.com/',
+        },
+        signal: AbortSignal.timeout(10000),
+        cache: 'no-store',
+      });
 
-    const html = await response.text();
-    // Extract tweet IDs from the syndication HTML
-    const ids: string[] = [];
-    const seen = new Set<string>();
-    // Look for data-tweet-id or status URLs
-    const tweetIdRegex = /(?:data-tweet-id=["'](\d+)["']|\/status\/(\d+))/g;
-    let match;
-    while ((match = tweetIdRegex.exec(html)) !== null && ids.length < limit) {
-      const id = match[1] || match[2];
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        ids.push(id);
+      if (!response.ok) {
+        console.log(`[Twitter] Syndication API returned ${response.status}`);
+        continue;
       }
-    }
 
-    if (ids.length > 0) {
-      console.log(`[Twitter] Got ${ids.length} tweet IDs from syndication: ${ids.join(', ')}`);
-    } else {
-      console.log(`[Twitter] Syndication returned HTML (${html.length} bytes) but no tweet IDs found`);
+      const html = await response.text();
+      // Extract tweet IDs from the syndication HTML using multiple patterns
+      const ids: string[] = [];
+      const seen = new Set<string>();
+      // Look for data-tweet-id, status URLs, or tweetId in JSON data
+      const tweetIdPatterns = [
+        /data-tweet-id=["'](\d+)["']/g,
+        /\/status\/(\d{10,})/g,
+        /"tweetId":"(\d+)"/g,
+        /"id_str":"(\d+)"/g,
+        /tweet-(\d{10,})/g,
+      ];
+
+      for (const regex of tweetIdPatterns) {
+        let match;
+        while ((match = regex.exec(html)) !== null && ids.length < limit) {
+          const id = match[1];
+          if (id && !seen.has(id) && id.length >= 10) {
+            seen.add(id);
+            ids.push(id);
+          }
+        }
+        if (ids.length >= limit) break;
+      }
+
+      if (ids.length > 0) {
+        console.log(`[Twitter] Got ${ids.length} tweet IDs from syndication: ${ids.join(', ')}`);
+        return ids;
+      } else {
+        console.log(`[Twitter] Syndication returned HTML (${html.length} bytes) but no tweet IDs found`);
+      }
+    } catch (err) {
+      console.log('[Twitter] Syndication API error:', err instanceof Error ? err.message : err);
     }
-    return ids;
-  } catch (err) {
-    console.log('[Twitter] Syndication API error:', err instanceof Error ? err.message : err);
-    return [];
   }
+
+  return [];
 }
 
 // KV key for storing known tweet IDs (persists across deployments)
@@ -384,20 +405,22 @@ async function fetchTweetsFromTwitterApi(username: string, limit = 5): Promise<T
     });
 
     if (!userResponse.ok) {
-      console.log(`[Twitter] Twitter API v2 user lookup failed: ${userResponse.status}`);
+      const errorBody = await userResponse.text().catch(() => 'unknown');
+      console.log(`[Twitter] Twitter API v2 user lookup failed: ${userResponse.status} - ${errorBody}`);
       return [];
     }
 
     const userData = await userResponse.json();
     const userId = userData.data?.id;
     if (!userId) {
-      console.log('[Twitter] Could not get user ID from Twitter API v2');
+      console.log('[Twitter] Could not get user ID from Twitter API v2, response:', JSON.stringify(userData));
       return [];
     }
 
-    // Fetch recent tweets
-    const tweetsUrl = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${Math.min(limit, 100)}&tweet.fields=created_at,public_metrics,text,attachments&expansions=attachments.media_keys&media.fields=type,url,preview_image_url,width,height,duration_ms`;
-    console.log(`[Twitter] Fetching tweets from Twitter API v2 for user ${userId}`);
+    // Fetch recent tweets - use max_results of at least 5 (Twitter API v2 minimum is 5)
+    const maxResults = Math.max(5, Math.min(limit, 100));
+    const tweetsUrl = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${maxResults}&tweet.fields=created_at,public_metrics,text,attachments&expansions=attachments.media_keys&media.fields=type,url,preview_image_url,width,height,duration_ms`;
+    console.log(`[Twitter] Fetching tweets from Twitter API v2 for user ${userId} (@${username})`);
     const tweetsResponse = await fetch(tweetsUrl, {
       headers: {
         'Authorization': `Bearer ${TWITTER_BEARER_TOKEN}`,
@@ -407,7 +430,8 @@ async function fetchTweetsFromTwitterApi(username: string, limit = 5): Promise<T
     });
 
     if (!tweetsResponse.ok) {
-      console.log(`[Twitter] Twitter API v2 tweets fetch failed: ${tweetsResponse.status}`);
+      const errorBody = await tweetsResponse.text().catch(() => 'unknown');
+      console.log(`[Twitter] Twitter API v2 tweets fetch failed: ${tweetsResponse.status} - ${errorBody}`);
       return [];
     }
 
@@ -569,22 +593,22 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     return { user, tweets: [] };
   }
 
-  // Method 1: Fetch tweet IDs from Nitter (RSS + HTML fallback) - latest 5 posts
-  let tweetIds = await fetchTweetIds(username, 5);
+  // Try multiple methods in parallel for faster results
+  // Method 1 & 2: Nitter + Syndication in parallel
+  const [nitterIds, syndicationIds] = await Promise.all([
+    fetchTweetIds(username, 5),
+    fetchTweetIdsFromSyndication(username, 5),
+  ]);
 
-  // Method 2: If Nitter failed, try syndication API
-  if (tweetIds.length === 0) {
-    console.log(`[Twitter] Nitter failed, trying syndication API for @${username}`);
-    tweetIds = await fetchTweetIdsFromSyndication(username, 5);
-  }
+  let tweetIds = nitterIds.length > 0 ? nitterIds : syndicationIds;
 
-  // Method 3: If all live discovery methods failed, try KV cache for previously known tweet IDs
+  // Method 3: If live discovery failed, try KV cache for previously known tweet IDs
   if (tweetIds.length === 0) {
     console.log(`[Twitter] All live methods failed, checking KV for cached tweet IDs for @${username}`);
     tweetIds = await retrieveTweetIdsFromKv(username);
   }
 
-  // Method 4: If KV cache also empty, use hardcoded known tweet IDs as last resort
+  // Method 4: If KV cache also empty, use hardcoded known tweet IDs (only for known users)
   if (tweetIds.length === 0) {
     const knownIds = KNOWN_TWEET_IDS[username.toLowerCase()];
     if (knownIds && knownIds.length > 0) {
@@ -599,7 +623,8 @@ async function fetchTwitterData(username: string): Promise<TwitterData> {
     tweets = await fetchTweets(username, tweetIds);
   }
 
-  // Method 5: If all ID methods failed, try Twitter API v2 with bearer token (returns full tweets directly)
+  // Method 5: If all ID-based methods failed, try Twitter API v2 with bearer token
+  // This is the most reliable method for any user but has stricter rate limits
   if (tweets.length === 0) {
     console.log(`[Twitter] All tweet ID methods failed, trying Twitter API v2 for @${username}`);
     tweets = await fetchTweetsFromTwitterApi(username, 5);
