@@ -136,21 +136,53 @@ async function osuFetch<T>(endpoint: string, token: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function fetchFreshOsuData(username: string): Promise<OsuManiaData> {
-  const gameMode = 'mania';
+async function fetchFreshOsuData(username: string, forceMode?: string): Promise<OsuManiaData> {
   const token = await getOsuToken();
 
   let user: OsuUser;
-  try {
-    user = await osuFetch<OsuUser>(
-      `/users/${encodeURIComponent(username)}/${gameMode}?key=username`,
-      token
-    );
-  } catch (error) {
-    if (error instanceof OsuApiError && error.status === 404) {
-      throw new OsuApiError(`Player "${username}" not found`, 404, 'NOT_FOUND');
+  let gameMode: string;
+
+  if (forceMode) {
+    // For the default user, use the forced mode (mania)
+    gameMode = forceMode;
+    try {
+      user = await osuFetch<OsuUser>(
+        `/users/${encodeURIComponent(username)}/${gameMode}?key=username`,
+        token
+      );
+    } catch (error) {
+      if (error instanceof OsuApiError && error.status === 404) {
+        throw new OsuApiError(`Player "${username}" not found`, 404, 'NOT_FOUND');
+      }
+      throw error;
     }
-    throw error;
+  } else {
+    // For searched users, fetch profile first to discover their default playmode
+    try {
+      user = await osuFetch<OsuUser>(
+        `/users/${encodeURIComponent(username)}?key=username`,
+        token
+      );
+    } catch (error) {
+      if (error instanceof OsuApiError && error.status === 404) {
+        throw new OsuApiError(`Player "${username}" not found`, 404, 'NOT_FOUND');
+      }
+      throw error;
+    }
+
+    // Use the user's default playmode (osu, taiko, fruits, mania)
+    gameMode = user.playmode || 'osu';
+
+    // Re-fetch with the correct mode to get mode-specific statistics
+    try {
+      user = await osuFetch<OsuUser>(
+        `/users/${user.id}/${gameMode}`,
+        token
+      );
+    } catch {
+      // If mode-specific fetch fails, use the already fetched profile
+      console.log(`[osu!] Failed to fetch mode-specific profile for ${username} in ${gameMode}, using default`);
+    }
   }
 
   const userId = user.id;
@@ -239,7 +271,8 @@ export async function GET(request: Request) {
     }
   }
 
-  const fetchTask = fetchFreshOsuData(targetUsername);
+  // For the default user, force mania mode; for searched users, auto-detect their playmode
+  const fetchTask = fetchFreshOsuData(targetUsername, isSearch ? undefined : 'mania');
   userInFlight.set(cacheKey, fetchTask);
 
   try {
