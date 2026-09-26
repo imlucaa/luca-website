@@ -14,6 +14,7 @@ type Activity = {
   state?: string;
   application_id?: string;
   assets?: { large_image?: string; small_image?: string };
+  timestamps?: { start?: number; end?: number };
 };
 
 type LanyardResponse = {
@@ -39,6 +40,7 @@ type LanyardResponse = {
       artist: string;
       album: string;
       album_art_url: string;
+      timestamps: { start: number; end: number };
     };
     activities: Activity[];
   };
@@ -82,6 +84,11 @@ function getActivityImage(activity: Activity): string | null {
   return null;
 }
 
+function formatTime(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 export async function GET() {
   const [lanyardResult, profileResult] = await Promise.allSettled([
     fetch(`https://api.lanyard.rest/v1/users/${DISCORD_ID}`, { next: { revalidate: 30 } }).then(
@@ -122,6 +129,12 @@ export async function GET() {
   const activityLabel = music ? 'Listening to Spotify' : activity ? `${activityLabels[activity.type] || 'Using'} ${activity.name}` : 'No current activity';
   const activityTitle = music?.song || activity?.details || activity?.name || 'Taking it easy';
   const activityDetail = music?.artist || activity?.state || '';
+  const activityAlbum = music?.album || (activity?.type === 2 ? activity.name : '');
+  const timestamps = music?.timestamps || activity?.timestamps;
+  const duration = timestamps?.start && timestamps?.end ? Math.max(0, timestamps.end - timestamps.start) : 0;
+  const elapsed = timestamps?.start ? Math.min(duration || Number.MAX_SAFE_INTEGER, Math.max(0, Date.now() - timestamps.start)) : 0;
+  const progress = duration > 0 ? Math.min(100, (elapsed / duration) * 100) : 0;
+  const isListening = Boolean(music || activity?.type === 2);
 
   return new ImageResponse(
     (
@@ -220,19 +233,19 @@ export async function GET() {
             width: '52%',
             display: 'flex',
             alignItems: 'center',
-            padding: '22px',
+            padding: '20px',
             borderRadius: '12px',
             background: '#111214',
             border: '1px solid #232428',
           }}
         >
           {activityImage ? (
-            <img src={activityImage} width="104" height="104" style={{ borderRadius: '10px', objectFit: 'cover' }} />
+            <img src={activityImage} width="96" height="96" style={{ borderRadius: '10px', objectFit: 'cover' }} />
           ) : (
             <div
               style={{
-                width: '104px',
-                height: '104px',
+                width: '96px',
+                height: '96px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -245,12 +258,24 @@ export async function GET() {
               ♪
             </div>
           )}
-          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', marginLeft: '20px' }}>
-            <div style={{ color: '#b5bac1', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              {activityLabel}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', marginLeft: '18px' }}>
+            <div style={{ color: '#949ba4', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+              {isListening ? 'Now Playing' : activityLabel}
             </div>
-            <div style={{ fontSize: '22px', fontWeight: 700, marginTop: '9px' }}>{activityTitle}</div>
-            {activityDetail && <div style={{ color: '#b5bac1', fontSize: '16px', marginTop: '6px' }}>{activityDetail}</div>}
+            <div style={{ fontSize: '20px', fontWeight: 700, marginTop: '8px' }}>{activityTitle}</div>
+            {activityDetail && <div style={{ color: '#b5bac1', fontSize: '15px', marginTop: '4px' }}>{activityDetail}</div>}
+            {activityAlbum && <div style={{ color: '#6d6f78', fontSize: '12px', marginTop: '4px' }}>{activityAlbum}</div>}
+            {duration > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', marginTop: '11px' }}>
+                <div style={{ width: '100%', height: '4px', display: 'flex', borderRadius: '2px', background: '#2b2d31' }}>
+                  <div style={{ width: `${progress}%`, height: '4px', borderRadius: '2px', background: '#dbdee1' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#80848e', fontSize: '11px', marginTop: '5px' }}>
+                  <span>{formatTime(elapsed)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
