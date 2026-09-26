@@ -261,10 +261,12 @@ export async function GET() {
             </div>
           )}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', marginLeft: '18px' }}>
-            <div style={{ color: '#949ba4', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-              {isListening ? 'Now Playing' : activityLabel}
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 700, marginTop: '8px' }}>{activityTitle}</div>
+            {!isListening && (
+              <div style={{ color: '#949ba4', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+                {activityLabel}
+              </div>
+            )}
+            <div style={{ fontSize: '20px', fontWeight: 700, marginTop: isListening ? '0' : '8px' }}>{activityTitle}</div>
             {activityDetail && <div style={{ color: '#b5bac1', fontSize: '15px', marginTop: '4px' }}>{activityDetail}</div>}
             {activityAlbum && <div style={{ color: '#6d6f78', fontSize: '12px', marginTop: '4px' }}>{activityAlbum}</div>}
             {duration > 0 && (
