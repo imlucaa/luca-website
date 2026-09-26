@@ -171,7 +171,9 @@ export async function GET() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', marginLeft: '16px' }}>
               <div style={{ fontSize: '25px', fontWeight: 700 }}>{displayName}</div>
-              <div style={{ color: '#b5bac1', fontSize: '16px', marginTop: '4px' }}>@{presence.discord_user.username}</div>
+              <div style={{ display: 'flex', color: '#b5bac1', fontSize: '16px', marginTop: '4px' }}>
+                @{presence.discord_user.username}
+              </div>
               {profile?.user_profile?.pronouns && (
                 <div style={{ color: '#949ba4', fontSize: '14px', marginTop: '4px' }}>{profile.user_profile.pronouns}</div>
               )}
@@ -215,7 +217,7 @@ export async function GET() {
               badges.map((badge) => (
                 <img
                   key={badge.id}
-                  src={`${PROFILE_API}/v1/badge/${badge.icon}.png`}
+                  src={`https://cdn.discordapp.com/badge-icons/${badge.icon}.png`}
                   alt={badge.description}
                   width="28"
                   height="28"
